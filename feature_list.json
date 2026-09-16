@@ -1,0 +1,23 @@
+{
+  "jira": {
+    "site": "https://singularboard.atlassian.net",
+    "project": "IA"
+  },
+  "features": [
+    {
+      "key": "IA-1",
+      "id": 1,
+      "epic": null,
+      "epic_name": null,
+      "name": "login",
+      "description": "Port de `imports/login/` (extraido en otro proyecto; se reimplementa aqui desde el prompt, no se copia codigo). Ciclo SDD normal: sembrado de requirements.md -> spec_author -> implementer -> reviewer.\n\n**Proposito y actor** (de `prompt.md > 1`): una persona que ya tiene cuenta en un ERP interno (no hay autoregistro: las cuentas las crea un administrador y nacen **pendientes**, sin credencial utilizable, hasta que su dueno la estrena por un enlace de establecimiento — ese alta es otro flujo). La entrada son dos campos: nombre de usuario y contrasena. La salida, si todo encaja: una sesion de 8 horas emitida como cookie firmada e inaccesible a scripts, y una redireccion a la pantalla que habia pedido (o, si no pidio ninguna valida, a la primera que sus permisos le permiten ver). No es la pantalla de login: es todo lo que pasa detras de ella.\n\n**Camino feliz**: normalizar el usuario, leer su ficha en una sola consulta, verificar la contrasena contra el hash, comprobar cuenta activa y organizacion viva, limpiar contadores de intentos, emitir sesion.\n\n**Requisitos del nucleo invariante** (EARS de `prompt.md > 8`, renumerados a R1..Rn en la siembra): E1-E7 verificacion (acepta si y solo si cuenta no borrada + hash correcto; mismo mensaje indistinguible en los 6 desenlaces de fallo; usuario normalizado y contrasena exacta; exactamente una verificacion de hash tambien en los rechazos; hash señuelo con mismo coste; entrada invalida sin tocar la base; usuario inexistente no escribe nada). E8-E14 sesion (cookie inaccesible a scripts; caducidad firmada dentro del valor; HMAC con solo identificadores; fallo cerrado sin secreto valido; ningun fallo emite sesion; sin contrasena/hash/sesion en logs; identificador de sesion nuevo y aleatorio). E15-E21 bloqueo (5 fallos bloquean y reinician; escalada 1/5/15/60 con tope, nunca permanente; bloqueada rechaza incluso con contrasena correcta; un fallo durante el bloqueo no lo alarga; bloqueo caducado acepta sin intervencion; exito deja los tres a cero; cuenta no activa -> rechazo sin escritura). E22-E23 estructura (decision de autenticar en el dominio con 5 puertos y un unico punto de composicion; camino feliz demostrable sin datos sembrados). E24 capacidad NUEVA que el original no tiene: todo intento resuelto —acierto o fallo— deja rastro consultable (quien, cuando, desde donde), sin contrasena/hash/sesion.\n\n**Decisiones abiertas** (de `decisiones.md`, NO heredadas: este proyecto decide): 1) politica de bloqueo: numeros fijos vs configurable; 2) tope de longitud del nombre de usuario; 3) reintentos del compare-and-set: rendirse en silencio vs dejar rastro (E24); 4) coste de hashing: bcrypt 10 vs coste mayor o algoritmo con memoria. Dos decisiones ya cerradas por humano el 2026-09-13 (incorporadas a la siembra, no se reabren): rastro de accesos SI (aciertos y fallos), y sesiones caen todas al cambiar el secreto.\n\nFuentes: `imports/login/prompt.md`, `imports/login/decisiones.md`, `imports/login/inventario.md`.",
+      "status": "pending",
+      "sdd": true,
+      "complexity": "high",
+      "zone": "backend",
+      "branch": "feature/IA-1-login",
+      "depends_on": null,
+      "spec_path": "specs/IA-1-login"
+    }
+  ]
+}

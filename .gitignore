@@ -1,0 +1,19 @@
+# Este es el arnes portable: solo viaja lo que se copia a un proyecto nuevo.
+
+# worktrees de features: cada uno es una copia completa del arbol (docs/worktrees.md)
+/.worktrees/
+
+# dependencias (si alguna vez se instala algo aca)
+node_modules/
+
+# variables de entorno: nunca. La plantilla si, si algun dia existe.
+.env
+.env.*
+!.env.example
+
+# config local de maquina, no del arnes
+.claude/settings.local.json
+
+# ruido del SO y logs
+.DS_Store
+*.log
