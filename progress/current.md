@@ -7,44 +7,44 @@
 
 | id | feature | zone | status | branch | quien la tiene |
 |---|---|---|---|---|---|
-| IA-1 | login | backend | in_progress | feature/IA-1-login | spec aprobado (F1.4); pendiente resolver prerrequisitos de stack/identidad antes de F2.1 |
+| IA-1 | login | backend | in_progress | feature/IA-1-login | spec aprobado y ampliado (F1.4, ronda 3); listo para F2.1 (implementer) |
 
-Importada por `/importar-modulo` (port `imports/login/`). Ficha en el board (IA-1, tarjeta en
-**En curso** = aprobacion canonica del spec), worktree montado, spec completo en
-`specs/IA-1-login/{requirements,design,tasks}.md`, dependencias aprobadas y registradas en
-`docs/dependencias.md`.
+Port `imports/login/` + identidad minima + stack base, todo dentro de IA-1. Board IA-1 en
+**En curso**; ramas `dev` y `feature/IA-1-login` pusheadas a `origin`.
 
 ## Evaluaciones
 
 ### IA-1 — login (2026-09-16, /importar-modulo)
 
-- **zone: backend.** El port es el flujo de autenticacion completo tras la pantalla:
-  verificacion de credenciales, hashing, bloqueo con escalada, emision de sesion firmada,
-  persistencia y rastro de accesos. El propio `prompt.md` abre con «No es la pantalla de
-  login: es todo lo que pasa detras de ella»; el unico componente con cara a la UI (borde
-  de formulario) lo maneja el controlador de entrada, no una pantalla.
-- **complexity: high.** 24 requisitos EARS, 5 puertos, 15 invariantes —concurrencia real (CAS
-  con ABA), criptografia (HMAC-SHA-256, hash señuelo), bloqueo con escalada y E2E con navegador.
-- Escribidas como labels en el issue (`zone:backend`, `complexity:high`).
+- **zone: backend** — flujo de autenticacion completo tras la pantalla (verificacion, hashing,
+  bloqueo con escalada, emision de sesion firmada, rastro). El propio `prompt.md` abre con «No
+  es la pantalla de login: es todo lo que pasa detras de ella».
+- **complexity: high** — 30 requisitos EARS (R1-R30 tras la ampliacion), 5 puertos, 15
+  invariantes, concurrencia (CAS con ABA), criptografia (HMAC, señuelo), E2E con navegador.
+- Labels `zone:backend`, `complexity:high` escritas en el issue.
 
-**Acotacion ronda 1 (2026-09-16)** — las 4 decisiones de `imports/login/decisiones.md`:
-(1) politica de bloqueo **configurable por entorno** (5/1/5/15/60 como default; se aparta de
-la recomendacion de numeros fijos); (2) tope del username **en el borde**, reusando la constante
-del alta; (3) reintentos del CAS agotados → **dejar rastro** (R24); (4) hashing **bcrypt coste 10**.
+**Rondas de decision (todas anexadas al spec con fecha 2026-09-16):**
 
-**Acotacion ronda 2 (2026-09-16, al aprobar el spec)** — dos decisiones de alcance:
-(5) **solo dos roles en la app: `admin_maestro` y `admin`** (catalogo cerrado; login y ticket de
-sesion los tratan como conjunto cerrado); (6) **unicidad GLOBAL del identificador** — dos
-empresas NO pueden tener el mismo usuario, lo que **revierte** para el identificador de login la
-lectura per-empresa de `docs/architecture.md` (QC-46/47); el indice del prerrequisito pasa a
-`lower(username) WHERE deleted_at IS NULL` **global** y se elimina el stopgap `LIMIT 2` del
-lector. Cerro la pregunta abierta 1 del spec (ambiguedad multiempresa).
+- **Ronda 1** (de `decisiones.md`): (1) politica de bloqueo **configurable por entorno** —
+  se aparta de la recomendacion de numeros fijos; (2) tope del username **en el borde**; (3) CAS
+  agotado → **dejar rastro** (R24); (4) hashing **bcrypt coste 10**.
+- **Ronda 2** (al aprobar el spec): (5) **solo dos roles: `admin_maestro` y `admin`**; (6)
+  **unicidad GLOBAL del identificador** (dos empresas NO comparten usuario; revierte para el
+  login la lectura per-empresa de `architecture.md` QC-46/47; sin stopgap de desambiguacion).
+- **Ronda 3** (al resolver el bloqueo T0): (7) el **stack base se monta como infraestructura
+  dentro de IA-1** (no se crea ficha aparte) — Bloque 0 del spec (TS1-TS6); (8) **IA-1 crea la
+  identidad minima** (R25-R30, Bloque I: `companies`/`roles`/`users`, indice global, los 2 roles,
+  hasher compartido) — supera la frontera «el login no crea identidad» del design; (9) remoto git
+  configurado y pusheado.
 
-**Dependencias aprobadas (2026-09-16)** y registradas en `docs/dependencias.md` tras verificar
-los 4 checks con red: `bcryptjs` 3.0.3, `zod` 4.6.5, `@prisma/client` 7.10.0, `prisma`
-**pineado a `^7.10.0`** (`latest` es `8.0.0-rc.15`, un RC — no instalar), `@playwright/test`
-1.63.0, `vitest` 5.0.1. **`@types/bcryptjs` NO se instala** (deprecado: es un stub; bcryptjs 3.x
-trae sus tipos). Sin libreria de JWT (HMAC propio Edge-ready).
+El spec ampliado (R25-R30 + stack base) fue **re-aprobado por el humano** el 2026-09-16.
+
+**Dependencias aprobadas y registradas en `docs/dependencias.md`** (4 checks corridos con red):
+ronda 1/2 — `bcryptjs` 3.0.3, `zod` 4.6.5, `@prisma/client` 7.10.0, `prisma` ^7.10.0,
+`@playwright/test` 1.63.0, `vitest` 5.0.1; **sin `@types/bcryptjs`** (stub deprecado). Ronda 3
+(stack base) — `next` 16.3.5, `react`/`react-dom` 19.3.0, `typescript` 7.0.2, `@types/node`,
+`@types/react`, `@types/react-dom`, `tailwindcss`/`@tailwindcss/postcss` 4.3.3, `tsx`, `pg`.
+Criterio de versiones: **latest con fallback reportado**.
 
 ## Conflictos pendientes
 
@@ -52,18 +52,18 @@ _(ninguno)_
 
 ## Deudas y cosas abiertas
 
-1. **BLOQUEO INMINENTE — el stack del repo no existe.** Sin `package.json`, sin `tsconfig`,
-   sin Next.js/Prisma/Tailwind montados y sin `node_modules`: T0/T1 del spec no pueden pasar
-   (no hay donde instalar las dependencias aprobadas ni con que correr typecheck/tests). El
-   `design.md` marca 4 prerrequisitos GATE T0 que **tampoco existen**: esquema de identidad
-   (`users`/`roles`/`companies`), indice de unicidad global, hasher compartido con el alta y
-   `SESSION_SECRET`. **Decision humana pendiente**: como se monta el stack y quien crea el
-   esquema de identidad base (¿ampliar IA-1?, ¿feature de identidad aparte en el board?).
-2. **Remoto git sin configurar.** `wt.sh` aviso «no se pudo hacer fetch de origin/dev». Anadir
-   `origin` y pushear la rama cuando el humano decida donde vive el repo (necesario para push y
-   PR en F2.4).
-3. **docs/jira.md dice proyecto `QC`, feature_list.json dice `IA`.** El JSON manda (bloque 0 del
-   validador) y la ficha IA-1 vive en el proyecto IA (Invent_Arte). Verificar que el cambio
-   QC -> IA fue deliberado; si no, revisar `jira.project` y la doc.
-4. **Al aprobar el spec se reescribio el issue IA-1 con las decisiones ronda 2** (roles 2,
-   unicidad global, dependencias aprobadas) antes de tocar disco, como manda `docs/jira.md`.
+1. **Base de datos sin definir.** El spec ampliado crea las migraciones de identidad (Bloque I,
+   TI1) y el rastro `login_attempts` (T14), y T17 corre integracion contra base real. Falta
+   decidir **de donde sale Postgres**: Supabase cloud (credenciales de proyecto),
+   Supabase CLI local, o Postgres en Docker. `DATABASE_URL` + `DIRECT_URL` + `SESSION_SECRET`
+   van en `.env` (el `.env.example` se crea en Bloque 0). **Bloquea migraciones e integracion**;
+   no bloquea scaffolding, dominio puro ni tests unitarios con puertos falsos.
+2. **`docs/jira.md` dice proyecto `QC`, feature_list.json dice `IA`.** El JSON manda y la ficha
+   IA-1 vive en el proyecto IA (Invent_Arte). Verificar que el cambio QC -> IA fue deliberado.
+3. **Warnings LF/CRLF** en los commits (sin `.gitattributes`). Cosmetico; si molesta, anadir
+   normalizacion de fin de linea en una tarea de infra.
+4. **TypeScript 7.0.2 / Next 16.3.5 son filo.** Si typecheck/build/tests rompen por
+   incompatibilidad, el implementer aplica el fallback aprobado (fijar la anterior estable del
+   paquete y reportar al leader).
+5. **Remoto resuelto**: `origin` = `https://github.com/arkstudio-co/inventarte.git` (repo vacio
+   al conectar). Pusheados `dev` (3bc2bc3) y `feature/IA-1-login` (373cea3).
