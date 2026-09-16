@@ -30,3 +30,9 @@ siembra una fila por dependencia ya instalada con estado `heredada` y audítalas
 
 | Paquete | Para qué | Estado | Fecha | Notas |
 | --- | --- | --- | --- | --- |
+| `bcryptjs` | Hasher de contrasenas (feature IA-1 login; bcrypt coste 10) | aprobada | 2026-09-16 | v3.0.3, BSD-3-Clause, ~10.1M desc/sem, no deprecado. JS puro (evita node-gyp de `bcrypt` nativo). **Trae sus propios tipos**: no instalar `@types/bcryptjs`. Aprobada por el humano junto al spec IA-1. |
+| `zod` | Validacion declarativa del borde (feature IA-1 login) | aprobada | 2026-09-16 | v4.6.5, MIT, ~209M desc/sem, no deprecado. Aprobada por el humano junto al spec IA-1. |
+| `@prisma/client` | Cliente ORM: `$queryRaw` del lector y `updateMany` del compare-and-set (feature IA-1 login) | aprobada | 2026-09-16 | v7.10.0, Apache-2.0, ~12.2M desc/sem, no deprecado. Aprobada por el humano junto al spec IA-1. |
+| `prisma` (dev) | CLI de migraciones/schema (feature IA-1 login) | aprobada | 2026-09-16 | **Pinear `^7.10.0`**: `npm view prisma version` devuelve `8.0.0-rc.15` (release candidate) — no instalar `@latest`. Apache-2.0, ~12.7M desc/sem. Aprobada por el humano junto al spec IA-1. |
+| `@playwright/test` (dev) | E2E con navegador real (feature IA-1 login; R8 cookie inaccesible a scripts) | aprobada | 2026-09-16 | v1.63.0, Apache-2.0, ~45.8M desc/sem, no deprecado. Aprobada por el humano junto al spec IA-1. |
+| `vitest` (dev) | Runner de tests unit/integration (feature IA-1 login) | aprobada | 2026-09-16 | v5.0.1, MIT, ~77M desc/sem, no deprecado. Aprobada por el humano junto al spec IA-1. |
