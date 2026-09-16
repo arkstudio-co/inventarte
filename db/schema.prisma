@@ -1,0 +1,15 @@
+// db/schema.prisma — esquema de Prisma del proyecto.
+//
+// Prisma 7: el datasource NO lleva `url`/`directUrl` (era la config de Prisma 5/6); la URL
+// del CLI (Migrate = DIRECT_URL) vive en prisma.config.ts del repo raiz.
+// DATABASE_URL (pooler) la lee la app en runtime via el adaptador de `pg` (dependencia
+// aprobada). Bloque 0: todavia sin models; las tablas de la identidad las traen TI1 y T14.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
