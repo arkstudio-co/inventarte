@@ -7,10 +7,24 @@
 
 | id | feature | zone | status | branch | quien la tiene |
 |---|---|---|---|---|---|
-| IA-1 | login | backend | in_progress | feature/IA-1-login | spec aprobado y ampliado (F1.4, ronda 3); listo para F2.1 (implementer) |
+| IA-1 | login | backend | in_progress | feature/IA-1-login | implementacion casi cerrada; **bloqueada en `.env`** (T0) para TI1/TI3/T17 |
 
 Port `imports/login/` + identidad minima + stack base, todo dentro de IA-1. Board IA-1 en
-**En curso**; ramas `dev` y `feature/IA-1-login` pusheadas a `origin`.
+**En curso**; ramas `dev` y `feature/IA-1-login` pusheadas a `origin` (ultimo commit de la rama:
+`7da9aa5`).
+
+**Avance de `tasks.md` (2026-09-16)**
+
+| Hecho `[x]` | Pendiente `[ ]` |
+| --- | --- |
+| Bloque 0 (TS1-TS6, T1): stack base, Prisma 7, vitest + guardia, Playwright, `.env.example` | **T0** preflight: `.env` (lo escribe el humano) |
+| Bloque A (T2-T7): dominio puro, 5 puertos, politica de bloqueo, unit tests | **TI1/TI2/T14**: migraciones **escritas** — falta **aplicarlas** (`prisma migrate deploy`) |
+| Bloque B (T8-T13, T15): hasher, token HMAC, cookie, repos, composicion unica, Server Action | **TI3**: integration de identidad (necesita base) |
+| T16 (pantalla de login) y T18 (E2E escritos; corrida real con `LOGIN_E2E=1`) | **T17**: integration contra base real |
+| Adapter `@prisma/adapter-pg` cableado (`PrismaPg` en `crearClientePrisma()`) | **T19**: mapa `R<n> -> test` completo y cierre del checklist |
+
+Gate del leader al cerrar la tanda: `./init.sh --rapido` **verde** (typecheck, lint, 66 tests +
+5 guardias, todas las migraciones con `down.sql`); unico aviso: no hay `.env`.
 
 ## Evaluaciones
 
@@ -52,18 +66,25 @@ _(ninguno)_
 
 ## Deudas y cosas abiertas
 
-1. **Base de datos sin definir.** El spec ampliado crea las migraciones de identidad (Bloque I,
-   TI1) y el rastro `login_attempts` (T14), y T17 corre integracion contra base real. Falta
-   decidir **de donde sale Postgres**: Supabase cloud (credenciales de proyecto),
-   Supabase CLI local, o Postgres en Docker. `DATABASE_URL` + `DIRECT_URL` + `SESSION_SECRET`
-   van en `.env` (el `.env.example` se crea en Bloque 0). **Bloquea migraciones e integracion**;
-   no bloquea scaffolding, dominio puro ni tests unitarios con puertos falsos.
-2. **`docs/jira.md` dice proyecto `QC`, feature_list.json dice `IA`.** El JSON manda y la ficha
+1. **`.env` pendiente — el humano lo escribe (unico bloqueo).** La base es **Supabase cloud**.
+   El humano crea `.worktrees/IA-1-login/.env` a partir de `.env.example` con:
+   `DATABASE_URL` (pooler, puerto 6543), `DIRECT_URL` (directo, 5432) y `SESSION_SECRET`
+   (>= 32 caracteres). El implementer **no** lo crea, no migra contra placeholders y no inventa
+   credenciales. Bloquea **TI1/TI2/T14** (aplicar migraciones), **TI3** y **T17**. Ya no bloquea
+   nada mas: el driver adapter `@prisma/adapter-pg` 7.10.0 esta **aprobado y cableado**
+   (`PrismaPg` + `pg`, `scripts/pg.d.ts` borrado con `@types/pg` 8.23.1 aprobado).
+   Al escribirlo: aplicar migraciones, correr TI3/T17 y pasar a F2.2 (reviewer).
+2. **E2E real diferido**: `e2e/login.spec.ts` esta escrito y revisado, pero la corrida con
+   navegador real se levanta con `LOGIN_E2E=1` cuando exista base.
+3. **`docs/jira.md` dice proyecto `QC`, feature_list.json dice `IA`.** El JSON manda y la ficha
    IA-1 vive en el proyecto IA (Invent_Arte). Verificar que el cambio QC -> IA fue deliberado.
-3. **Warnings LF/CRLF** en los commits (sin `.gitattributes`). Cosmetico; si molesta, anadir
+4. **Warnings LF/CRLF** en los commits (sin `.gitattributes`). Cosmetico; si molesta, anadir
    normalizacion de fin de linea en una tarea de infra.
-4. **TypeScript 7.0.2 / Next 16.3.5 son filo.** Si typecheck/build/tests rompen por
+5. **TypeScript 7.0.2 / Next 16.3.5 son filo.** Si typecheck/build/tests rompen por
    incompatibilidad, el implementer aplica el fallback aprobado (fijar la anterior estable del
    paquete y reportar al leader).
-5. **Remoto resuelto**: `origin` = `https://github.com/arkstudio-co/inventarte.git` (repo vacio
-   al conectar). Pusheados `dev` (3bc2bc3) y `feature/IA-1-login` (373cea3).
+6. **`lint` es `tsc --noEmit` provisional**: `eslint` no esta en el registro de dependencias
+   aprobadas y el implementer no lo instalo «por si acaso». Cuando una feature lo apruebe, se
+   sustituye el script.
+7. **Remoto resuelto**: `origin` = `https://github.com/arkstudio-co/inventarte.git` (estaba
+   vacio al conectar). Pusheados `dev` (`f81e383`) y `feature/IA-1-login` (`7da9aa5`).
