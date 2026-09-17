@@ -26,5 +26,8 @@ test-results/
 lib/generated/
 *.tsbuildinfo
 
+# declaracion TypeScript regenerada por `next dev`/`next build` (docs de Next 16: no versionar)
+next-env.d.ts
+
 # reporte transitorio del gate (test:json -> scripts/comparar-baseline-rojos.mjs)
 .vitest-rojos.json

@@ -66,3 +66,54 @@ actualizadas con la corrida real. `@types/bcryptjs` NO se instalo (stub deprecad
 Bloque 0 (TS1, T1, TS3, TS4, TS6) completo y en verde: 17 dependencias con 4 checks
 verificados y acta al dia, typecheck/lint OK, guardia 5/5, validate+generate OK; el stack
 queda listo para TS2 (frontend: App Router + Tailwind v4) y TS5 (Playwright).
+
+---
+
+## Tanda 1 (frontend) — TS2 + TS5
+
+Rango: **sin R propio y sin test unitario propio** (los R1-R30 los cubren T2-T19 y el Bloque I;
+TS2/TS5 son infraestructura previa). Fecha: 2026-09-16.
+
+### Archivos creados/modificados
+
+| Archivo | Cambio | Tarea |
+| --- | --- | --- |
+| `app/layout.tsx` | nuevo: root layout (html/body, `lang="es"`, metadata estatica, importa `globals.css`) | TS2 |
+| `app/globals.css` | nuevo: `@import 'tailwindcss';` (hoja global de Tailwind v4) | TS2 |
+| `app/(public)/layout.tsx` | nuevo: layout de la zona publica (`min-h-dvh`, regla multiplataforma; da hogar a `/login` de T16) | TS2 |
+| `app/(public)/page.tsx` | nuevo: andamiaje desechable «IA-1 WIP» con clases Tailwind de humo (target del smoke; T16 la complementa/sobrescribe — reviewer decide) | TS2 |
+| `postcss.config.mjs` | nuevo: plugin `@tailwindcss/postcss` (guia 11-css.md de Next 16) | TS2 |
+| `package.json` | script `dev` = `next dev` (TS2 exige `pnpm dev`; Turbopack es el bundler default en Next 16) | TS2 |
+| `.gitignore` | ignorado `next-env.d.ts` (docs de Next 16: se regenera con `next dev`/`next build`, no se versiona) | TS2 |
+| `playwright.config.ts` | nuevo: E2E — baseURL local, proyecto chromium, `webServer` con `pnpm dev` y `reuseExistingServer: true`, `testDir: ./e2e` | TS5 |
+| `e2e/smoke.spec.ts` | nuevo: visita `/`, afirma el andamiaje visible y que Tailwind compilo (`font-weight: 600` computado) | TS5 |
+| `progress/impl_IA-1-login.md` | esta seccion | — |
+
+Creado **con** la tanda, por `next dev`/typegen, y NO versionado: `next-env.d.ts` y `.next/`
+(ignorados). `e2e/` quedo en el scope via `testDir` del config; no hizo falta campo `files`
+en `package.json` (no hubiera aportado nada en una app no publicable).
+
+### Decisiones (para el reviewer)
+
+1. **Nombre del grupo de ruta: `(public)`.** `docs/architecture.md` dibuja `(marketing)` /
+   `(dashboard)`, pero `tasks.md` (TS2, T16) usa `app/(public)/login/` y el leader pidio
+   `app/(public)/layout.tsx`. Manda el spec de la feature: zona publica = `app/(public)/`.
+   El grupo privado **no se crea** en esta tanda: no tendria paginas y un grupo vacio es
+   infraestructura «por si acaso» que el reviewer rechaza; lo crea la feature que construya
+   el area autenticada (el repo lo nombra `(dashboard)`).
+2. **Sin `next.config.*`**: Next 16 arranca sin config; no se agrego nada «por si acaso».
+3. **`next-env.d.ts` sin versionar** siguiendo los docs del propio Next 16 instalado
+   (`project-structure.md`); `tsconfig.json` ya lo incluye en `include` (patron que no casa
+   cuando el archivo aun no existe = sin error, verificado con `pnpm typecheck` en limpio).
+
+### Verificacion (salidas reales)
+
+- `pnpm exec playwright install chromium` -> OK (Chrome for Testing 153.0.8010.12 + headless shell, cache de usuario).
+- `pnpm typecheck` -> OK (tsc --noEmit, sin errores).
+- `pnpm lint` -> OK (lint = tsc --noEmit, provisional del stack).
+- `pnpm exec playwright test e2e/smoke.spec.ts` -> **1 passed (13.3s)**: el webServer levanto `pnpm dev`, GET / respondio 200 y el `<h1>` computa `font-weight: 600` (Tailwind v4 compilado).
+
+### Nota para el leader
+
+El smoke confirma el criterio de «hecho» de TS2/TS5: la app arranca y responde, Tailwind
+compila y el E2E corre con navegador real.
