@@ -5,6 +5,7 @@
 // Decision 1: parseo de entorno fail-fast AL ARRANCAR — un valor invalido lanza; la app
 // no arranca mal configurada. R4/R5: el señuelo se calienta al arrancar.
 import { cookies } from "next/headers";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client";
 import type { LoginInput } from "../types/login";
 import type { LockPolicy } from "../services/login/account-lock-policy";
@@ -90,19 +91,18 @@ const lockPolicy = parseLockPolicy({
 
 let contexto: VerifyCredentialsContext | null = null;
 
-// BLOQUEO CONOCIDO (T0 item 2 -> T17): Prisma 7 con el generador `prisma-client` NO admite
-// `new PrismaClient()` sin opciones — `PrismaClientOptions` es union de `{ adapter }` o
-// `{ accelerateUrl }` y una de las dos es obligatoria. El adapter (`@prisma/adapter-pg`)
-// no esta aprobado todavia en docs/dependencias.md, asi que no hay construccion valida.
-// Se difiere con un error EXPLICITO (mejor que un cast que finja adapter) en vez de dejar
-// un fallo opaco de runtime. T17 reemplaza el cuerpo de esta funcion por:
-//   return new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
+// Prisma 7 con el generador `prisma-client` exige `{ adapter }` o `{ accelerateUrl }` en el
+// constructor (PrismaClientOptions es union y una de las dos es obligatoria). El adapter
+// `@prisma/adapter-pg` esta APROBADO (docs/dependencias.md) y se cablea aqui — este archivo
+// es el unico punto del codigo que importa el adaptador (R22).
+// NOTA runtime sin `.env`: `DATABASE_URL` puede ser `undefined` y el adapter no lo valida;
+// la app falla en el primer `crearClientePrisma()` (lazy, desde `obtenerContexto`), fail-fast
+// decision 1. Validar ese comportamiento real queda para T17 (integracion contra base), que
+// sigue pendiente por falta de `.env`.
 function crearClientePrisma(): PrismaClient {
-  throw new Error(
-    "Prisma 7 requiere un driver adapter (@prisma/adapter-pg) o accelerateUrl; " +
-      "ninguno esta aprobado aun (docs/dependencias.md) ni cableado (T17). " +
-      "El login compila, pero no ejecuta contra base hasta entonces.",
-  );
+  return new PrismaClient({
+    adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+  });
 }
 
 // El cliente se instancia PER-EZOSAMENTE: esta tanda no ejecuta contra base (los repos

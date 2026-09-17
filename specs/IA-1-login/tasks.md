@@ -439,7 +439,7 @@ el mensaje congelado por autenticacion), conservando el `username` (R2, R6, R21,
 **Hecho:** typecheck; sin logica de negocio en el action (solo borde + composicion + redirect);
 sin imports de adaptadores.
 
-### T16 — Pantalla de login (UI minima)
+### T16 — Pantalla de login (UI minima) — **[x]**
 
 `app/(public)/login/page.tsx` + `app/(public)/login/components/`:
 
@@ -477,7 +477,7 @@ base; no se sembran de nuevo) y con `password_hash` real del hasher de T8 (R29):
 **Hecho:** `vitest related --run` verde contra la base real de la feature; fixtures limpios al
 final (assert: no quedan filas).
 
-### T18 — [P] E2E con navegador real (R2, R8, R9, R12, R21)
+### T18 — [P] E2E con navegador real (R2, R8, R9, R12, R21) — **[x]**
 
 `e2e/login.spec.ts` (Playwright):
 

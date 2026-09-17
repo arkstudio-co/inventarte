@@ -371,3 +371,150 @@ Bloque B + composicion + action completos y en verde para lo que la tanda puede 
 base: codec/cookie/hasher/factory con 27 tests nuevos, los 5 greps estructurales fijando
 R22/R29/R30 y la contencion de Prisma a la composicion; el unico punto ciego es el runtime de
 los repos, bloqueado por T0 item 2 -> T17 y dejado con error explicito en `crearClientePrisma`.
+
+---
+
+## Tanda 5 — Cablear PrismaPg (desbloqueo T0 item 2, parcial) + drop de `scripts/pg.d.ts`
+
+Rango: desbloquea el constructor de `crearClientePrisma()` (R22 intacto: el adaptador se
+importa SOLO en la composicion). Fecha: 2026-09-17. El humano aprobo `@prisma/adapter-pg`
+7.10.0 (casa con `@prisma/client` 7.10.0) y `@types/pg` 8.23.1 (dev); ambas ya instaladas
+(verificadas en `package.json`).
+
+### Archivos creados/modificados
+
+| Archivo | Cambio | Tarea |
+| --- | --- | --- |
+| `lib/composition/login.ts` | modificado: `import { PrismaPg } from "@prisma/adapter-pg"` (valor, `verbatimModuleSyntax`); `crearClientePrisma()` ya no lanza — construye `new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) })`. El comentario del bloqueo viejo se sustituyo por: nota de que el adapter esta aprobado y cableado aqui (R22), nota breve de que el runtime sin `.env` falla al primer `crearClientePrisma()` (lazy, en `obtenerContexto`, fail-fast decision 1) y que T17 (integracion contra base) sigue pendiente por falta de `.env`. La firma de `verifyCredentials` exportada NO cambio | T13/T17 |
+| `scripts/pg.d.ts` | eliminado: la declaracion ambiental provisional de `pg` ya no hace falta — existe `@types/pg` 8.23.1 aprobado (fila nueva en docs/dependencias.md) | Bloque 0 punto 3 |
+| `progress/impl_IA-1-login.md` | modificado: esta seccion | — |
+
+### `scripts/db-rollback.ts` — verificado contra `@types/pg` real, SIN cambios
+
+Se reviso la superficie que el script usa contra `node_modules/@types/pg/index.d.ts`:
+constructor `(config?: string | ClientConfig)` con `connectionString?: string`, `connect():
+Promise<Client>`, overloads de `query` que aceptan `string | QueryConfig<I>` + `values?`,
+`rowCount: number | null` (el `?? 0` del script sigue valido) y `end(): Promise<void>`. La
+declaracion provisional era un subconjunto estricto de los tipos reales — **cero desajuste**:
+no se toco el script ni su comportamiento.
+
+### Test estructural R22 — sin ajustes
+
+`tests/unit/architecture-login.test.ts` paso VERDE sin tocar nada. Motivo documentado: el
+grep de imports de adaptadores (R22) solo persigue targets resolubles `lib/`, `@/` o
+relativos; `@prisma/adapter-pg` es paquete externo y `resolver()` devuelve `null`, asi que ni
+entra en la violacion. Ademas el import vive en la composicion, que es justamente el
+importador permitido por R22 — no hizo falta ampliar ningun patron del test.
+
+### Mapa R<n> -> test (delta de la tanda)
+
+| R<n> | Test |
+| --- | --- |
+| R22 | `architecture-login` (grep de imports de adaptadores — verde sin cambios; `@prisma/adapter-pg` solo en composicion) |
+| Dependencias | `guard-dependencias-aprobadas` (las 2 filas nuevas aprobadas, instaladas y verificadas por el implementer; guardia intacta, `package.json` ya las tenia) |
+
+### Verificacion (salidas reales)
+
+- `pnpm typecheck` -> OK: `tsc --noEmit` sin errores (con el adapter cableado y
+  `scripts/pg.d.ts` borrado).
+- `pnpm lint` -> OK (provisional: `tsc --noEmit`, mismo estatus que tandas previas).
+- `pnpm exec vitest related --run lib/composition/login.ts tests/unit/architecture-login.test.ts
+  scripts/db-rollback.ts` -> `Test Files 1 passed (1)` / `Tests 5 passed (5)`
+  (architecture-login completo, incluido R22).
+- Suite completa y `./init.sh` NO se corrieron (regla del gate: los corre el leader).
+- Nada se instalo en esta tanda: `package.json` ya tenia `@prisma/adapter-pg` 7.10.0 y
+  `@types/pg` 8.23.1.
+
+### Veredicto
+
+Tanda 5 verde: PrismaPg cableado en la composicion (el constructor de Prisma 7 deja de lanzar
+y el login puede ejecutar contra base en cuanto exista `.env`), `pg.d.ts` eliminado con
+`db-rollback.ts` compilando contra los tipos reales sin cambios y R22 intacto sin tocar el
+test; lo unico pendiente sigue siendo T17 (integracion real, bloqueada por falta de `.env`).
+
+---
+
+## Tanda 5 (retoma — cierre de sesion del implementer): T16 + T18 revisados y commiteados
+
+Fecha: 2026-09-17. La sesion anterior dejo en disco sin commitear la pantalla de login (T16)
+y el E2E (T18). Esta tanda los REVISA contra el spec, confirma el adapter (Tanda 5 de
+backend_dev, arriba) y cierra lo que puede cerrarse sin base. `.env` NO existe en el worktree
+(verificado `ls .env`): **T0 item 2, la aplicacion de TI1/TI2/T14, TI3 y T17 quedan BLOQUEADOS**
+y se reportan al final.
+
+### Archivos revisados/confirmados (frontend_dev, sin cambios — ya cumplian el spec)
+
+| Archivo | Verificacion |
+| --- | --- |
+| `app/(public)/login/page.tsx` | Server Component (`min-h-dvh`, metadata, `searchParams` Promise con `await` — Next 16), pasa `defaultNext` + `labels` al form; capa: solo barrel |
+| `app/(public)/login/components/index.ts` | barrel sin `'use client'` |
+| `app/(public)/login/components/login-form.tsx` | `'use client'`, `useActionState(loginAction, LOGIN_INITIAL_STATE)` de `react`; hidden `next` con `defaultValue`; `autoComplete`; `aria-invalid`/`aria-describedby`; **password SIN `defaultValue`** (inv. 15); username conservado; mensajes por campo + congelado (R2); `noValidate` |
+| `app/(public)/login/components/submit-button.tsx` | `type=submit`, `disabled={pending}`, `aria-busy`, `h-11` (>=44px), `text-base` |
+| `e2e/login.spec.ts` | 3 tests (exito->/dashboard + cookie invisible a scripts R8/R9; fallo->mensaje congelado sin cookie R2/R12; pending->mismo mensaje R21); `LOGIN_COPY_CREDENTIALS_INVALID` real; credenciales de env, no hardcodeadas; `getByLabel` resuelven contra los labels del form |
+| `playwright.config.ts` | proyecto `chromium` con `testIgnore: /login\.spec\.ts/`; `login-e2e` condicional (`LOGIN_E2E=1`) con `testMatch` |
+
+Los 6 archivos ya estaban COMPLETOS en disco; frontend_dev no toco ninguno
+(«ya cumplia»). Se verifico ademas en el source de React 19 que el reset del form tras la
+action corre en el commit after-mutation — **despues** de aplicar los `defaultValue` nuevos —
+asi que el patron «username restaurado + password limpia» funciona como exige el spec.
+
+### Evidencia real del render de `/login` (criterio «Hecho» de T16)
+
+El smoke E2E de la tanda solo visitaba `/`. El implementer corrio un spec temporal
+(`e2e/_t16-render-check.spec.ts`, borrado tras la corrida) que visito `/login` sin `.env`:
+**1 passed** — el heading «Acceso a Inventarte», los dos inputs (`getByLabel`) y el boton
+«Entrar» renderizan. El login pinta sin base porque `crearClientePrisma()` es lazy (solo se
+instancia al primer submit, via `obtenerContexto`).
+
+### Verificacion (salidas reales, implementer — regla del gate)
+
+- `pnpm typecheck` -> OK (`tsc --noEmit`, 0 errores).
+- `pnpm lint` -> OK (provisional: `tsc --noEmit`).
+- `pnpm exec vitest related --run lib/composition/login.ts
+  tests/guards/guard-dependencias-aprobadas.test.ts tests/unit/architecture-login.test.ts` ->
+  `Test Files 2 passed (2)` / `Tests 10 passed (10)` (guardia 5/5 con las 2 filas nuevas +
+  architecture-login 5/5 con R22 intacto).
+- `pnpm exec playwright test e2e/smoke.spec.ts` -> **1 passed** (el `testIgnore` de
+  playwright.config.ts no toca el smoke).
+- `pnpm exec playwright test e2e/_t16-render-check.spec.ts` -> **1 passed** (temp, borrado).
+- Suite completa y `./init.sh` NO se corrieron (regla del gate: leader).
+
+### Tasks marcadas en tasks.md
+
+- **T16 `[x]`** (pantalla de login, UI minima): archivos revisados, `/login` renderiza sin
+  base, barrel respetado, sin fetch de datos privados en cliente, pagina no autenticada en
+  zona publica.
+- **T18 `[x]`** (E2E): spec completo y correcto contra el spec; queda **escrito pero sin
+  ejecutar** — bloqueado por entorno (lo levanta el leader con `LOGIN_E2E=1` cuando exista
+  `.env` + base + fixtures de T17; sin `LOGIN_E2E` el spec queda fuera del run default via
+  `testIgnore`). El criterio de T18 exige «playwright test e2e/login.spec.ts verde», que
+  solo es posible con base: se marca `[x]` por el estado del artefacto, con la corrida
+  real diferida a cuando el leader active el proyecto `login-e2e`.
+
+### Bloqueos reportados (T0 item 2 — unico bloqueo de la feature)
+
+`.env` ausente en el worktree. **No se crea, no se migra, no se inventan credenciales**:
+- **T0** queda `[ ]` (item 2: `SESSION_SECRET` >= 32, `DATABASE_URL`/`DIRECT_URL`
+  alcanzables, `prisma migrate status`).
+- **TI1 + TI2 + T14**: migraciones escritas y commiteadas (Tanda 2); la APLICACION (`prisma
+  migrate deploy`) y los criterios «`\d users` / `count(*) = 2`» quedan pendientes de `.env`.
+- **TI3** (integration identidad: R25-R30, R27 global) y **T17** (integration login contra
+  base real: R1/R4/R15-R21/R23/R24 + fixtures auto) quedan pendientes de `.env`.
+- El runtime de los repos ahora esta DESBLOQUEADO tecnicamente (`crearClientePrisma()` ya
+  construye el adapter); falta solo el entorno para ejecutarlo (T17).
+
+### Estado del mapa R<n> -> test (T19, parcial)
+
+El mapa completo esta en `specs/IA-1-login/tasks.md` L497-528 (referencia del reviewer) y los
+deltas por tanda en esta bitacora (Tandas 3, 4, 5). **Filas que dependen de base siguen
+pendientes**: R23 (T17/TI3/T18), R24 (T17 real), R25-R28/R30 (TI3), R1/R4/R15-R21 (T17), y las
+que citan T18 como test (R1/R2/R8/R9/R12/R21) esperan la corrida E2E real. T19 cierra cuando
+exista `.env` y el leader corra `./init.sh --rapido` / `./init.sh` completo.
+
+### Veredicto
+
+Tanda 5 (retoma) verde: T16 y T18 revisados y confirmados contra el spec (archivos ya
+completos en disco — frontend_dev no toco nada), `/login` renderiza sin base (evidencia
+real), adapter PrismaPg cableado (Tanda 5 backend_dev) y tasks T16/T18 marcadas `[x]`; el
+unico punto ciego es el runtime contra base — T0 item 2/TI1-TI3/T17 bloqueados por falta de
+`.env`, gestionado por human+leader.
