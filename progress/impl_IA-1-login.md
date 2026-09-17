@@ -117,3 +117,66 @@ en `package.json` (no hubiera aportado nada en una app no publicable).
 
 El smoke confirma el criterio de «hecho» de TS2/TS5: la app arranca y responde, Tailwind
 compila y el E2E corre con navegador real.
+
+---
+
+## Tanda 2 (backend) — TI1 + TI2 + T14 (migraciones escritas; aplicacion pendiente)
+
+Rango: **R24 (T14)**, **R25/R26-esquema/R27/R28/R30-esquema (TI1)**, **R26 (TI2)**. Sin tests
+unitarios propios en esta tanda: son migraciones; los tests que las ejercitan real son TI3
+(integration, identidad) y T17 (validation), que vienen en tanda posterior. La verificacion de
+una migracion escrita sin base es validate + diff de fidelidad (abajo). Fecha: 2026-09-16.
+
+### Archivos creados/modificados
+
+| Archivo | Cambio | Tarea |
+| --- | --- | --- |
+| `db/migrations/20260916090000_init_identity/migration.sql` | nuevo: `companies`, `roles`, `users` (tipo/estructura/nombres identicos a los que Prisma 7 genera; CHECKs de estados R28; UNIQUE+CHECK de `roles.name` R26; `password_hash` NOT NULL R30; FK de users restrictivas R25; indice GLOBAL a mano R27; RLS×3 con FORCE + policy del owner) | TI1 |
+| `db/migrations/20260916090000_init_identity/down.sql` | nuevo: revierte en orden inverso (policy, NO FORCE, DISABLE, indice global, DROP TABLE) | TI1 |
+| `db/migrations/20260916090001_seed_roles/migration.sql` | nuevo: INSERT de los 2 roles con `gen_random_uuid()` + `ON CONFLICT (name) DO NOTHING` (data migration, alternativa 8) | TI2 |
+| `db/migrations/20260916090001_seed_roles/down.sql` | nuevo: `DELETE ... WHERE name IN ('admin_maestro','admin')` | TI2 |
+| `db/migrations/20260916090002_add_login_attempts/migration.sql` | nuevo: `login_attempts` (uuid PK, FKs nullable a users/companies `ON DELETE SET NULL`, CHECK del conjunto cerrado de outcomes, `annotation_failed` default false, `attempted_at` déf. CURRENT_TIMESTAMP, `ip_address inet`, `user_agent` varchar(512), 3 indices con attemptedAt DESC; RLS idem TI1) | T14 |
+| `db/migrations/20260916090002_add_login_attempts/down.sql` | nuevo: revierte exactamente (policy, NO FORCE, DISABLE, DROP TABLE) | T14 |
+| `db/schema.prisma` | modificado: models `Company`, `Role`, `User`, `LoginAttempt` verbatim de design.md §10 (sin `@unique` en `username` a proposito, R27; `roles.name` si `@unique`) | TI1, T14 |
+| `progress/impl_IA-1-login.md` | esta seccion | — |
+
+### Decisiones y hallazgos (para el reviewer)
+
+1. **Fidelidad verificada con el propio Prisma**: `prisma migrate diff --from-empty
+   --to-schema db/schema.prisma --script` (read-only, sin DB) confirma que la estructura de las
+   dos migraciones de esquema es identica a la que Prisma 7 generaria — tipos (`TIMESTAMPTZ(6)`,
+   `INET`, `VARCHAR(n)`), nombres de indices/FKs y `ON UPDATE CASCADE`. **Hallazgo clave**:
+   Prisma NO emite `DEFAULT gen_random_uuid()` para `@default(uuid())` — el default es del
+   CLIENTE, no de la base; por eso los ids de las 4 tablas van sin DEFAULT y el seed de TI2
+   inserta ids explícitos. Los unicos deltas a mano son los mandatados por design.md §10:
+   CHECKs de estados, indice parcial/global R27, RLS FORCE + policy, y el INSERT de TI2.
+2. **`migrate diff` en Prisma 7**: la flag `--to-schema-datamodel` fue RENOMBRADA a
+   `--to-schema` (error del CLI con la flag vieja). Sin env no hace nada (datasource
+   condicional); con `DATABASE_URL`+`DIRECT_URL` dummy (aunque no conecta en `--from-empty`)
+   emite el SQL completo.
+3. **La APLICACION de TI1/TI2/T14 queda PENDIENTE (T0 item 2)**: no hay `.env` ni base en el
+   worktree (ni se crea — prohibicion del implementer). El `db:migrate` que aplica y los
+   criterios «Hecho:`\d users` / `count(*) = 2`» los corre el human+leader cuando exista la
+   config; mientras tanto TI1/TI2/T14 quedan `[ ]` en el checklist de tasks.md y esta rama no
+   se da por cerrada en ese eje. (Smoke de `db:migrate:create` ya documentado pendiente en
+   Tanda 1, punto 2.)
+
+### Verificacion (salidas reales)
+
+- `pnpm exec prisma validate` -> OK: `The schema at db\schema.prisma is valid` (sin env).
+- `pnpm exec prisma generate` -> OK sin env: `Generated Prisma Client (7.10.0) to
+  .\lib\generated\prisma in 216ms`.
+- `pnpm exec prisma migrate diff --from-empty --to-schema db/schema.prisma --script` ->
+  SQL completo de las 4 tablas + 8 indices + 4 FKs; comparado 1:1 con los `migration.sql`
+  escritos (deltas = solo los mandatos a mano, listados arriba).
+- `pnpm typecheck` -> OK (tsc --noEmit, 0).
+- `pnpm lint` -> OK (provisional: tsc --noEmit, mismo estatus que Tanda 1).
+- `must_change_password` -> **ausente** de `*.sql`/`*.prisma`/`*.ts` (solo aparece en los
+  specs como mandato de NO declararlo: requirements.md L202, tasks.md L398).
+
+### Veredicto
+
+TI1 + TI2 + T14 escritos y verificados al maximo posible sin base: esquema valido, cliente
+generado, estructura 1:1 con lo que Prisma 7 emitiria, RLS/CHECKs/indice global/seed presentes
+con su down.sql; la aplicacion queda bloqueada por T0 item 2 (config de entorno), que gestiona
+el human+leader.
