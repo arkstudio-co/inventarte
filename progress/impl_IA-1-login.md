@@ -604,3 +604,207 @@ estan aplicados y verificados contra la base real (2 roles, indice global, RLS e
 tablas, `_prisma_migrations` consistente) y los 3 downs validados sin destruir nada; el
 unico matiz es el ruteo IPv6 del direct connection, documentado arriba con el workaround
 del session pooler. Pendiente de la tanda: TI3, T17, T18 real y T19.
+
+---
+
+## Tanda 7 (backend_dev) — TI3 + T17 (integration contra base real) + scripts de fixtures E2E
+
+Rango: **R23, R25-R30 (TI3)** y **R1, R4, R15-R21, R23, R24 contra base real (T17)**.
+Fecha: 2026-09-17. Con el entorno desbloqueado (Tanda 6), los tests de integracion corren
+contra la base real via `DATABASE_URL` (transaction pooler 6543) — el mismo camino que usa
+la app (`PrismaPg` envuelve un Pool de `pg` con `connectionString`; los tests usan `pg` y
+`PrismaClient` directamente, sin opciones de ssl — la conexion funciona tal cual).
+
+### Archivos creados/modificados
+
+| Archivo | Cambio | Tarea |
+| --- | --- | --- |
+| `tests/integration/identity.integration.test.ts` | nuevo: 7 tests contra base real (R25-R30 + RLS); fixtures auto por id determinista, limpiados en `afterAll` (R23) | TI3 |
+| `tests/integration/login.integration.test.ts` | nuevo: 11 tests contra base real (R1, R4, R15-R21, R23, R24); fixtures auto (+ fijador `fijarEstado` para bloqueos/borrados), limpiados al final | T17 |
+| `scripts/seed-e2e-login-fixtures.mts` | nuevo: siembra idempotente (UPSERT por id fijo) de la empresa `e2e00000-0000-4000-8000-000000000001`, `e2e_login_admin` (active) y `e2e_login_pending` (pending) con `PasswordHasher` de T8; imprime 4 vars `E2E_LOGIN_*` parseables | T17/T18 |
+| `scripts/cleanup-e2e-login-fixtures.mts` | nuevo: borra por los ids deterministas (reverse-safe, no toca nada que no sea de la feature) | T17/T18 |
+| `specs/IA-1-login/tasks.md` | TI3 y T17 marcadas `**[x]**` | TI3/T17 |
+| `progress/impl_IA-1-login.md` | esta seccion | — |
+
+### Tests (titulos reales, con su R)
+
+**TI3 — `identity.integration.test.ts` (7 tests):**
+
+1. `R27: el indice global rechaza el mismo username en dos empresas y el duplicado directo`
+2. `R27: tras el borrado logico, el mismo username se reusa`
+3. `R26: el catalogo tiene exactamente dos roles y rechaza otros nombres o duplicados`
+4. `R28: una grafia de estado fuera del conjunto cerrado no entra en users`
+5. `R30: password_hash es obligatorio y una cuenta pending con hash valido se verifica al coste completo y fracasa con el desenlace uniforme de R2` (reusa el `PasswordHasher` de T8)
+6. `R25: las FKs restrictivas impiden borrar companies y roles referenciados` (baja = UPDATE de `deleted_at`, nunca DELETE)
+7. `RLS: companies, roles y users tienen ENABLE + FORCE y la policy app_owner_full_access` (las 3 tablas del contrato TI3)
+
+**T17 — `login.integration.test.ts` (11 tests):**
+
+1. `R15: cinco fallos en paralelo bloquean la cuenta y no emiten sesion`
+2. `R17: fallos en paralelo sobre una cuenta YA bloqueada no la desbloquean ni la mutan`
+3. `R18: el CAS ABA no puede borrar un bloqueo vigente con un estado obsoleto`
+4. `R18: el CAS no aplica si el contador cambio entre lectura y escritura`
+5. `R1/R3: el lector devuelve la fila unica o ninguna, sin desambiguar (decision 6)`
+6. `R1: el lector no desambigua aunque exista una fila borrada con el mismo username`
+7. `R21: pendiente e inactiva no entran ni con la contrasena correcta, sin escrituras de cuenta`
+8. `R7: el inexistente no toca la tabla de cuentas y deja rastro sin vinculos ni secretos`
+9. `R19/R20: un bloqueo caducado no frena el exito, que resetea contador, nivel y plazo y deja rastro success`
+10. `R24: una fila de rastro por cada desenlace resuelto, con username y vinculos correctos`
+11. `decision 3/R24: el CAS agotado deja annotation_failed en la fila real`
+
+### Desviaciones y hallazgos (para el reviewer)
+
+1. **`unknown_user` existe en el CHECK pero el servicio nunca lo escribe**: `verify-credentials-service.ts` emite `bad_credentials` en los 4 caminos de fallo de credenciales, incluido el inexistente (L53). La desviacion esta documentada en la cabecera del test T17 y el test aserta el comportamiento real (`bad_credentials` a secas, sin revelar existencia — R2).
+2. **Dos fallos reales de TI3 en el primer run** (corregidos en el fichero): (a) la query de conteos mezclaba `count(*)` con una columna lista sin `GROUP BY` — refactorizada a subselects; (b) los chequeos de RLS via `pg_class`/`pg_policies` matcheaban tambien `auth.users` de Supabase (esquema `auth`, no `public`) — filtro `relnamespace = 'public'::regnamespace` y `schemaname = 'public'` (y el conteo de tablas publicadas con `to_regclass`).
+3. **CAS agotado probado de verdad**: 8 pools writer haciendo `UPDATE users SET failed_login_attempts = failed_login_attempts + 1` en 3 rondas contra la misma cuenta (mismo `pg` Pool del adapter); el CAS se agota y la fila real queda `annotation_failed = true`. 28 filas de rastro, todas con el desenlace esperado.
+4. **bcryptjs emite `$2b$10$`**, no `$2a$` (verificado con un probe temporal: prefijo `$2b$10$`, len 60, ambos fixtures). Sin impacto: `bcrypt.compare` maneja ambos y los tests T8 ya cubren el hasher.
+5. **`tsconfig.json` no incluye `*.mts`** (`include: ["**/*.ts","**/*.tsx"]`): los scripts `seed/cleanup` `.mts` no los cubre `tsc --noEmit`. Son scripts de operacion (mismo estatus que `db-rollback.ts` era con `pg.d.ts`); se verifican con `tsx` real. Sigue pendiente la decision de incluir `**/*.mts` en el include (quedaria como sugerencia al reviewer — no se toco la config).
+6. **Self-contained por contrato**: los dos archivos de integracion NO comparten helpers (cada uno lleva sus fixtures y el `fijarEstado`), para que los nombres de archivo y casos del spec sean exactos y los archivos se puedan mover a `tests/` del stack base sin arrastrar dependencias.
+7. **Los tests de integracion se conectan a `DATABASE_URL` (6543) tal cual**: ni ssl ni override; `pg` Pool con `connectionString` y `PrismaClient` con el adapter `PrismaPg` (camino de la app). El historial de `DIRECT_URL` (IPv6) solo afecta a `prisma migrate`, ya documentado en Tanda 6.
+
+### Mapa R<n> -> test (delta; la tabla completa queda en T19)
+
+| R<n> | Test |
+| --- | --- |
+| R1 | T17 `R1/R3: el lector devuelve la fila unica o ninguna...` + `R1: el lector no desambigua aunque exista una fila borrada...` (base real) |
+| R4/R5 | TI3 `R30: ...pending con hash valido se verifica al coste completo...` (reuso del hasher real) |
+| R7 | T17 `R7: el inexistente no toca la tabla de cuentas y deja rastro...` (base real) |
+| R15 | T17 `R15: cinco fallos en paralelo bloquean...` (base real) |
+| R17 | T17 `R17: fallos en paralelo sobre una cuenta YA bloqueada...` (base real) |
+| R18 | T17 `R18: el CAS ABA...` + `R18: el CAS no aplica si el contador cambio...` (base real) |
+| R19/R20 | T17 `R19/R20: un bloqueo caducado no frena el exito...` (base real) |
+| R21 | T17 `R21: pendiente e inactiva no entran...` (base real) |
+| R23 | TI3 + T17 (fixtures auto creados/limpiados, sin seeds) + seed/cleanup scripts listos para T18 |
+| R24 | T17 `R24: una fila de rastro por cada desenlace...` + `decision 3/R24: el CAS agotado deja annotation_failed...` (filas reales) |
+| R25 | TI3 `R25: las FKs restrictivas impiden borrar companies y roles referenciados` (base real) |
+| R26 | TI3 `R26: el catalogo tiene exactamente dos roles...` (base real) |
+| R27 | TI3 `R27: el indice global rechaza...` + `R27: tras el borrado logico...` (base real) |
+| R28 | TI3 `R28: una grafia de estado fuera del conjunto cerrado...` (base real) |
+| R30 | TI3 `R30: password_hash es obligatorio...` (base real, coste completo) |
+| RLS | TI3 `RLS: companies, roles y users tienen ENABLE + FORCE...` (base real) |
+
+### Verificacion (salidas reales, backend_dev — regla del gate)
+
+- `pnpm typecheck` -> OK (`tsc --noEmit`, 0 errores).
+- `pnpm lint` -> OK (provisional: `tsc --noEmit`).
+- `pnpm exec vitest related --run tests/integration/identity.integration.test.ts
+  tests/integration/login.integration.test.ts tests/unit/architecture-login.test.ts
+  tests/guards/guard-dependencias-aprobadas.test.ts` ->
+  **`Test Files 4 passed (4)` / `Tests 28 passed (28)`** (7 + 11 + 5 + 5). Primera corrida
+  26/28 (los 2 fallos de TI3 del punto 2); corregidos, 28/28.
+- Seed verificado 2 veces (idempotente): salida
+  `E2E_LOGIN_ADMIN_USERNAME=e2e_login_admin E2E_LOGIN_ADMIN_PASSWORD=E2eLogin-Admin-2026
+  E2E_LOGIN_PENDING_USERNAME=e2e_login_pending E2E_LOGIN_PENDING_PASSWORD=E2eLogin-Pending-2026`;
+  probe de estado (temp, borrado): 2 usuarios con `account_status` correcto y hash `$2b$10$`
+  (60 chars); empresa `count = 1`.
+- Cleanup verificado al final: `fixtures E2E de login eliminados.` y 0 filas restantes.
+- Suite completa y `./init.sh` NO se corrieron (regla del gate: leader).
+
+### Veredicto
+
+TI3 y T17 verdes contra la base real (7 + 11 tests = 18 nuevos; 28/28 en el related),
+con los fixtures auto de R23 y los scripts seed/cleanup listos y verificados para la
+corrida E2E real de T18; el unico pendiente de la feature es esa corrida (la levanta el
+leader con `LOGIN_E2E=1`) y el cierre de T19.
+
+---
+
+## Tanda 8 — E2E real (T18) + mapa R->test completo (T19)
+
+Fecha: 2026-09-17. Con las migraciones (Tanda 6) y los tests de integracion (Tanda 7) en
+verde contra la base real, se corrio el E2E de login con navegador real (`LOGIN_E2E=1`) y
+se cierra el mapa completo de trazabilidad.
+
+### T18 — corrida E2E real (salidas reales)
+
+Fixtures: `pnpm exec tsx scripts/seed-e2e-login-fixtures.mts` (idempotente; empresa
+`e2e00000-0000-4000-8000-000000000001`, `e2e_login_admin` active y `e2e_login_pending`
+pending con hash real `$2b$10$`). `LOGIN_E2E=1` + las 4 `E2E_LOGIN_*` en el entorno.
+Puerto 3000 libre (sin `pnpm dev` huerfano que `reuseExistingServer` pudiera reutilizar).
+
+- `pnpm exec playwright test e2e/login.spec.ts` ->
+  **`3 passed (7.1s)`**:
+  1. `credenciales correctas redirigen al destino y la sesion no es visible a scripts`
+     (2.0s) — redirige a /dashboard y `document.cookie` nunca contiene `qcl_session`
+     (httpOnly real, R8; R1/R9 por el camino).
+  2. `credenciales incorrectas se quedan en /login sin cookie y con el mensaje congelado`
+     (768ms) — R2 + R12 sin cookie.
+  3. `una cuenta pendiente recibe el mismo mensaje congelado y ninguna sesion` (737ms) —
+     R21.
+
+El `webServer` levanto `pnpm dev` (puerto 3000 estaba libre), que cargó `.env` y sirvio
+el login real contra base. Limpieza post-corrida: `cleanup-e2e-login-fixtures.mts` ->
+`fixtures E2E de login eliminados.`; luego se identifico y borro el rastro del test 2
+(`username='usuario-inexistente'`, `outcome=bad_credentials` — el spec hardcodea ese
+username) y se verifico la base limpia: `users=0 companies=0 login_attempts=0 roles=2`.
+Nota: el `outcome` de esa fila confirma en la base real la desviacion 1 de Tanda 7 (el
+servicio emite `bad_credentials` y nunca `unknown_user`, pese a que el CHECK lo admite).
+
+### T19 — mapa completo R<n> -> test (R1-R30)
+
+Consolidacion final (unit + integracion + E2E + estructural). Nombres de archivo, no
+solo de tanda; los casos clave citados por su titulo.
+
+| R | Test(es) y archivo |
+| --- | --- |
+| R1 | `tests/unit/verify-credentials.test.ts` (acepta activo+correcta) · `tests/integration/login.integration.test.ts` (`R1/R3` lector fila unica/ninguna; `R1` sin desambiguar con fila borrada) · `e2e/login.spec.ts` (entra y redirige) |
+| R2 | `verify-credentials.test.ts` (mismo objeto congelado REJECTED) · `tests/unit/login-border.test.ts` (mensaje = constante exportada) · `e2e/login.spec.ts` (mensaje uniforme en fallo e inexistente) |
+| R3 | `login-border.test.ts` (normalizacion sin tocar password) · `lib/repositories/user-credentials-repo.ts` (query `lower()=lower()`) ejercitada por `login.integration.test.ts` (`R1/R3`) |
+| R4 | `verify-credentials.test.ts` (senuelo 1× por proceso, 1 verify por intento) · `tests/unit/password-hasher.test.ts` (promesa del senuelo compartida) · `tests/integration/identity.integration.test.ts` (`R30` pending verificado al coste completo) |
+| R5 | `verify-credentials.test.ts` (senuelo 1 computacion) · `password-hasher.test.ts` (mismo hasher y coste) · `identity.integration.test.ts` (idem) |
+| R6 | `login-border.test.ts` (invalida no toca puertos ni hash ni sesion) |
+| R7 | `verify-credentials.test.ts` (desaparecido no escribe; inexistente sin escrituras) · `login.integration.test.ts` (`R7` inexistente no toca users, rastro sin vinculos) |
+| R8 | `tests/unit/session-starter.test.ts` (atributos httpOnly/lax/path/secure por entorno) · `e2e/login.spec.ts` (httpOnly comprobado en navegador) |
+| R9 | `tests/unit/session-token.test.ts` (exp dentro y firmado, 8h absolutas) |
+| R10 | `session-token.test.ts` (claims solo identificadores) · `verify-credentials.test.ts` (rol/org salen del puerto, jamas de la entrada) |
+| R11 | `session-token.test.ts` + `session-starter.test.ts` (sin secreto/corto -> lanza, cero cookies) |
+| R12 | `verify-credentials.test.ts` (ningun fallo emite sesion) · `e2e/login.spec.ts` (sin cookie en fallo) |
+| R13 | `login-border.test.ts` (estado sin contrasena, valor + negativo de tipo) · `login.integration.test.ts` (columnas del rastro sin secretos) · `architecture-login.test.ts` (estructural, sin logs de secretos) |
+| R14 | `verify-credentials.test.ts` + `login-border.test.ts` (sid/attemptId nuevos por invocacion) · `tests/unit/session-id-factory.test.ts` (UUIDs no derivados) |
+| R15 | `tests/unit/account-lock-policy.test.ts` (quinto fallo bloquea y reinicia) · `login.integration.test.ts` (`R15` cinco paralelos bloquean) |
+| R16 | `account-lock-policy.test.ts` (escalada 1/5/15/60, tope 60, nunca permanente) |
+| R17 | `verify-credentials.test.ts` (bloqueada verifica 1 vez con correcta e incorrecta) · `login.integration.test.ts` (`R17` paralelos sobre bloqueada no desbloquean) |
+| R18 | `account-lock-policy.test.ts` (fallo estando bloqueada: estado intacto) · `login-attempt-repo.ts` (predicado del CAS por RANGO) · `login.integration.test.ts` (`R18` ABA + contador cambiado, updateMany real) |
+| R19 | `account-lock-policy.test.ts` (reloj inyectado: caducado acepta) · `lib/services/login/account-status.ts` (orden de ramas) · `login.integration.test.ts` (`R19/R20` caducado no frena el exito) |
+| R20 | `account-lock-policy.test.ts` (exito resetea los tres) · `login.integration.test.ts` (`R19/R20` reset + rastro success) |
+| R21 | `verify-credentials.test.ts` (cortes de estado/org sin escrituras) · `login.integration.test.ts` (`R21` pending/inactive no entran) · `e2e/login.spec.ts` (pending, mismo mensaje, sin sesion) |
+| R22 | `tests/unit/architecture-login.test.ts` (grep: solo `lib/composition/login.ts` importa adaptadores) |
+| R23 | `identity.integration.test.ts` + `login.integration.test.ts` (fixtures auto creados/limpiados, assert sin filas) · `scripts/seed-e2e-login-fixtures.mts` + `scripts/cleanup-e2e-login-fixtures.mts` (fixtures E2E) |
+| R24 | `verify-credentials.test.ts` (recordAttempt por desenlace + CAS agotado annotation_failed) · `login.integration.test.ts` (`R24` fila por desenlace con vinculos; `decision 3/R24` annotation_failed real con 8 writers) |
+| R25 | `db/migrations/.../init_identity/migration.sql` (FKs restrictivas, esquema) · `identity.integration.test.ts` (`R25` baja=UPDATE deleted_at, FKs impiden DELETE) · `user-credentials-repo.ts` (filtro del puerto `deleted_at IS NULL`) |
+| R26 | `db/migrations/.../seed_roles/migration.sql` (INSERT de 2 con ON CONFLICT) · `identity.integration.test.ts` (`R26` catalogo=2, otros/duplicados rechazados) · `session-token.test.ts` (role del ticket en conjunto cerrado) |
+| R27 | `init_identity/migration.sql` (indice global funcional/parcial) · `identity.integration.test.ts` (`R27` duplicado entre empresas; reuso post-borrado) · `user-credentials-repo.ts` (sin desambiguacion, sin LIMIT 2) |
+| R28 | `init_identity/migration.sql` (CHECK estados) · `identity.integration.test.ts` (`R28` grafias rechazadas) |
+| R29 | `password-hasher.ts` (unico hasher, coste 10) · `architecture-login.test.ts` (grep bcrypt solo en password-hasher) |
+| R30 | `architecture-login.test.ts` (sin `must_change_password`; sin rechazo por forma) · `password-hasher.test.ts` (fail-closed, sin centinela) · `identity.integration.test.ts` (`R30` NOT NULL; pending al coste completo) |
+
+Sin R huerfanos: las 30 filas tienen test y archivo. El mapa del spec (tasks.md, nota
+2026-09-16) se cumple integro: R25-R30 cerrados por TI1/TI3, R23 por los fixtures auto y
+los scripts E2E, y las filas que citaban T18 como test quedaron con la corrida real 3/3.
+
+### Verificacion (salidas reales, implementer — regla del gate)
+
+- `pnpm typecheck` -> OK. `pnpm lint` -> OK (provisional: `tsc --noEmit`).
+- `pnpm exec vitest related --run tests/integration/identity.integration.test.ts
+  tests/integration/login.integration.test.ts tests/unit/architecture-login.test.ts
+  tests/guards/guard-dependencias-aprobadas.test.ts` -> 28/28 (corrido por backend_dev en
+  Tanda 7; aqui no se repitio la suite — solo se añadieron scripts de operacion `.mts` y
+  documentacion).
+- `pnpm exec playwright test e2e/login.spec.ts` con `LOGIN_E2E=1` y fixtures -> 3/3 (7.1s).
+- Scripts seed (2×) y cleanup (1×) corridos reales; base verificada limpia al final.
+- Suite completa y `./init.sh` NO se corrieron (regla del gate: leader).
+
+### Tasks marcadas en tasks.md
+
+- **T18** ya estaba `[x]` (Tanda 5 retoma, artefacto); la corrida REAL queda registrada
+  en esta tanda (3/3).
+- **T19 `[x]`** — marcada en tasks.md al escribir este mapa.
+
+### Veredicto
+
+Cierre de la feature en verde: todas las tasks de `specs/IA-1-login/tasks.md` completas,
+con la base real aplicada y verificada (T0/TI1/TI2/T14), 28 tests de integracion+guardias
+y 3 E2E reales habilitados por `.env`, y el mapa R1-R30 sin huerfanos. El unico bloqueo
+vivido (ruteo IPv6 del direct connection) quedo resuelto con workaround documentado y sin
+tocar `.env`. Queda al leader: `./init.sh --rapido` y `./init.sh` completo antes del PR, y
+decidir si `DIRECT_URL` debe apuntar al session pooler en `.env`.

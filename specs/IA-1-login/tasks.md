@@ -160,7 +160,7 @@ del design):
 **Hecho:** tras `db:migrate`, `SELECT count(*) FROM roles` = **2** con los nombres del conjunto
 cerrado; `db:rollback` los elimina.
 
-### TI3 — [P] Integration — identidad (R25-R30; paralelo con el Bloque A)
+### TI3 — [P] Integration — identidad (R25-R30; paralelo con el Bloque A) — **[x]**
 
 `tests/integration/identity.integration.test.ts`, base real de la feature, fixtures
 auto-creados y limpiados (R23):
@@ -455,7 +455,7 @@ fetch de datos en el cliente para datos privados; pagina *no* autenticada en zon
 
 ## Bloque D — Verificacion (y cierre)
 
-### T17 — [P] Integration contra base real (R1, R4, R15-R21, R23, R24)
+### T17 — [P] Integration contra base real (R1, R4, R15-R21, R23, R24) — **[x]**
 
 `tests/integration/login.integration.test.ts`, base real de la feature, **fixtures creados y
 limpiados por el propio test** (R23: sin datos sembrados). Los fixtures crean su `company` y su
@@ -489,7 +489,7 @@ final (assert: no quedan filas).
 **Hecho:** `pnpm exec playwright test e2e/login.spec.ts` verde; es la unica forma honesta de
 afirmar R8.
 
-### T19 — Mapa R->test y cierre
+### T19 — Mapa R->test y cierre — **[x]**
 
 Escribe en `progress/impl_IA-1-login.md` el mapa completo `R<n> -> test` (cada R1-R30 con su
 test y archivo). Referencia para el reviewer (`CHECKPOINTS.md > Trazabilidad`):
