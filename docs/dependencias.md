@@ -47,6 +47,8 @@ siembra una fila por dependencia ya instalada con estado `heredada` y audítalas
 | `@tailwindcss/postcss` (dev) | Plugin PostCSS de Tailwind v4 (stack base) | aprobada | 2026-09-16 | v4.3.3, MIT, ~27.9M desc/sem, no deprecado. |
 | `tsx` (dev) | Runner TS de `scripts/db-rollback.ts` (stack base) | aprobada | 2026-09-16 | v4.23.13, MIT, ~64.5M desc/sem, no deprecado. |
 | `pg` | Driver Postgres de respaldo de `db-rollback.ts` (stack base) | aprobada | 2026-09-16 | v8.23.0, MIT, ~39.3M desc/sem, no deprecado. |
+| `@prisma/adapter-pg` | Driver adapter de Prisma 7 (exige `{ adapter }` o `{ accelerateUrl }` en el constructor) | aprobada | 2026-09-16 | v7.10.0, Apache-2.0, ~4.1M desc/sem, no deprecado. Casa exacto con `@prisma/client` 7.10.0. Aprobada por el humano para desbloquear T17 y el runtime de los repositorios. |
+| `@types/pg` (dev) | Tipos de `pg` | aprobada | 2026-09-16 | v8.23.1, MIT, ~42.4M desc/sem, no deprecado. Sustituye la declaracion ambiental provisional `scripts/pg.d.ts`, que se borra al instalarla. |
 
 **Criterio de versiones aprobado por el humano el 2026-09-16 (stack base IA-1)**: ultima estable
 de cada paquete, con **fallback reportado** — si una version rompe typecheck/build/tests, el
