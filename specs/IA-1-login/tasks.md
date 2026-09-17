@@ -201,7 +201,7 @@ rama: se aplican las migraciones, no se reporta al board.
 
 ## Bloque A — Dominio (depende de T0; no toca DB ni framework)
 
-### T2 — Tipos, schemas y constantes
+### T2 — Tipos, schemas y constantes — **[x]**
 
 Crea en `lib/types/`:
 
@@ -217,7 +217,7 @@ Crea en `lib/types/`:
 **Hecho:** `pnpm typecheck` pasa; el tipo `LoginFormState` no admite contrasena (compila un
 negativo de tipo en el test T7); las constantes estan exportadas.
 
-### T3 — Interfaces de los cinco puertos
+### T3 — Interfaces de los cinco puertos — **[x]**
 
 Crea en `lib/interfaces/` (firmas del `design.md > Arquitectura`, valores **crudos**):
 
@@ -234,7 +234,7 @@ Crea en `lib/interfaces/` (firmas del `design.md > Arquitectura`, valores **crud
 **Hecho:** compilan; ningun tipo importa de Prisma/Next; la firma de `IUserCredentialsReader`
 no devuelve un booleano «activa» cocinado.
 
-### T4 — Dominio puro
+### T4 — Dominio puro — **[x]**
 
 Crea en `lib/services/login/`:
 
@@ -254,7 +254,7 @@ Crea en `lib/services/login/`:
 **Hecho:** sin imports de Prisma ni de `next/*` (se verifica con el test estructural de T13);
 `pnpm typecheck` pasa; el caso de uso no instancia nunca un adaptador.
 
-### T5 — [P] Unit: caso de uso con puertos falsos (R1, R2, R4, R5, R7, R12, R14, R17, R21, R24)
+### T5 — [P] Unit: caso de uso con puertos falsos (R1, R2, R4, R5, R7, R12, R14, R17, R21, R24) — **[x]**
 
 `tests/unit/verify-credentials.test.ts` (puertos falsos, sin base ni hash real):
 
@@ -278,7 +278,7 @@ Crea en `lib/services/login/`:
 **Hecho:** `pnpm exec vitest related --run tests/unit/verify-credentials.test.ts` verde; el
 archivo nombra los casos por comportamiento (convencion `conventions.md > Tests`).
 
-### T6 — [P] Unit: politica de bloqueo con reloj inyectado (R15, R16, R19, R20)
+### T6 — [P] Unit: politica de bloqueo con reloj inyectado (R15, R16, R19, R20) — **[x]**
 
 `tests/unit/account-lock-policy.test.ts`:
 
@@ -291,7 +291,7 @@ archivo nombra los casos por comportamiento (convencion `conventions.md > Tests`
 
 **Hecho:** suite verde; usa un `clock` fake; sin sleeps.
 
-### T7 — [P] Unit: borde y formulario (R2, R3, R6, R13, R21)
+### T7 — [P] Unit: borde y formulario (R2, R3, R6, R13, R21) — **[x]**
 
 `tests/unit/login-border.test.ts`:
 
@@ -312,7 +312,7 @@ archivo nombra los casos por comportamiento (convencion `conventions.md > Tests`
 
 ## Bloque B — Adaptadores (dependen de T2+T3; [P] entre si)
 
-### T8 — [P] Hasher — el UNICO del repo (R29)
+### T8 — [P] Hasher — el UNICO del repo (R29) — **[x]**
 
 `lib/services/login/password-hasher.ts` (implementa `IPasswordHasher`):
 
@@ -327,13 +327,13 @@ archivo nombra los casos por comportamiento (convencion `conventions.md > Tests`
 **Hecho:** unit tests (`tests/unit/password-hasher.test.ts`): fail-closed, promesa compartida
 entre dos llamadas concurrentes, coste configurable a 10; typecheck.
 
-### T9 — [P] Fabrica de id de sesion
+### T9 — [P] Fabrica de id de sesion — **[x]**
 
 `lib/services/login/session-id-factory.ts` (implementa `ISessionIdFactory`): `crypto.randomUUID`.
 
 **Hecho:** devuelve un UUID por llamada; unit test: dos llamadas -> ids distintos.
 
-### T10 — [P] Token de sesion
+### T10 — [P] Token de sesion — **[x]**
 
 `lib/services/login/session-token.ts` (usado por `SessionStarter` y, en el futuro, por el
 interceptor): formato `v1.<payloadBase64Url>.<hmacBase64Url>`; HMAC-SHA-256 via WebCrypto;
@@ -348,7 +348,7 @@ identificadores (R10); exp dentro y firmado; firma alterada o de otro secreto ->
 version vieja rechazada sin verificar firma; sin secreto / corto -> lanza (R11). Edge-ready: el
 modulo no importa de `next/*`.
 
-### T11 — [P] Escritor de cookie
+### T11 — [P] Escritor de cookie — **[x]**
 
 `lib/services/login/session-starter.ts` (implementa `ISessionStarter`): usa `session-token` y
 escribe la cookie `qcl_session` provisional con `httpOnly`, `sameSite=lax`, `path=/`,
@@ -356,7 +356,7 @@ escribe la cookie `qcl_session` provisional con `httpOnly`, `sameSite=lax`, `pat
 **Hecho:** unit tests: atributos de la cookie correctos por entorno; `startSession` lanza si el
 secreto no esta configurado (R11); typecheck.
 
-### T12 — [P] Repositorios
+### T12 — [P] Repositorios — **[x]**
 
 `lib/repositories/user-credentials-repo.ts` (implementa `IUserCredentialsReader`):
 `$queryRaw` parametrizado con `lower(username) = lower($1)` y filtro `users.deleted_at IS
@@ -382,7 +382,7 @@ quedan prohibidos como unico test (el CAS se prueba de verdad en T17).
 
 ---
 
-## T13 — Composicion unica + test estructural (R22, R29, R30)
+## T13 — Composicion unica + test estructural (R22, R29, R30) — **[x]**
 
 `lib/composition/login.ts`: unico archivo que importa los adaptadores (T8-T12), construye el
 `ctx` y expone `verifyCredentials` compuesto. Parseo de entorno **fail-fast** en la
@@ -429,7 +429,7 @@ archivos nuevos.
 **Hecho:** creada con `db:migrate:create`; `down.sql` escrito; `db:migrate` aplica en la base
 de la feature; `db:rollback` la revierte y deja `_prisma_migrations` consistente.
 
-### T15 — Server Action (Controller)
+### T15 — Server Action (Controller) — **[x]**
 
 `lib/actions/login.ts` ('use server'): recibe `(prevState, formData)`, valida con
 `loginInputSchema` (borde), compone el servicio SOLO desde `lib/composition/login.ts`, ejecuta;

@@ -279,3 +279,95 @@ Bloque A completo y verde: dominio puro del login (tipos, 5 puertos, escalada de
 caso de uso con CAS) con 29 tests de unit que fijan R1-R7, R12-R21 y R24; las desviaciones
 frente al design/consigna quedaron documentadas arriba y el unico bug real (sesionIdFactory
 como funcion) lo detecto el propio typecheck y se corrigio en el fichero.
+---
+
+## Tanda 4 — Bloque B adaptadores (T8-T12) + composicion unica (T13) + Server Action (T15)
+
+Rango: R8, R9 (token), R10 (sesion), R11, R14 (uas menos el CAS), R22, R26 (role), R27 (query
+del lector sin desambiguacion), R29, R30 (sin forma). Restricciones de tanda cumplidas: repos
+SOLO compilan (no ejecutan contra base — T0 item 2), la composicion es el unico importador de
+adaptadores, el action importa solo composicion+types, nada se instalo.
+
+### Archivos creados/modificados
+
+| Archivo | Cambio | Tarea |
+| --- | --- | --- |
+| `lib/services/login/password-hasher.ts` | nuevo: `PasswordHasher` (bcryptjs coste 10, `PASSWORD_HASHER_COSTE = 10`), `verify` fail-closed SIN chequeo de forma (R30), señuelo con texto fijo cacheando la PROMESA (R4/R5) | T8 |
+| `lib/services/login/session-id-factory.ts` | nuevo: `crearSessionIdFactory` -> `crypto.randomUUID()` (inv. 4/11; comentario documenta edge-ready: WebCrypto global, nada de `node:crypto`) | T9 |
+| `lib/services/login/session-token.ts` | nuevo: codec `v1.<payload>.<hmac>`, HMAC-SHA-256 via `crypto.subtle`, `timingSafeEqual` (node:crypto) para la firma, claims `{sub,iat,exp,role,cid,sid}`, `exp = iat + 480 min` absoluta firmada (R9), secreto min 32 leido en la llamada fail-closed (R11), version != `v1` rechazada sin verificar, role en conjunto cerrado (R26). `crearToken` es `async` (ver desviaciones, punto 2) | T10 |
+| `lib/services/login/session-starter.ts` | nuevo: `cookieDeSesion(token, produccion)` puro (httpOnly, lax, path /, secure solo prod, SIN domain — R8) + `crearSessionStarter` con reloj y escritor inyectados; `startSession` lanza si el secreto esta ausente/corto y la excepcion se PROPAGA (inv. 9) | T11 |
+| `lib/repositories/user-credentials-repo.ts` | nuevo: `` con `Prisma.sql`, `lower(username) = lower()`, `users.deleted_at IS NULL`, JOIN roles/companies, `(c.deleted_at IS NOT NULL) AS company_deleted`, SIN desambiguacion (R27/decision 6: `filas[0] ?? null`) | T12 |
+| `lib/repositories/login-attempt-repo.ts` | nuevo: `compareAndSet` (updateMany: contador esperado + estado esperado + plazo por RANGO — inv. 5/6), `set` incondicional con `estadoNuevo: null` = omitir columna (inv. 12), `recordAttempt` INSERT best-effort (se traga errores — design §9; nunca password/hash/sesion, R13) | T12 |
+| `lib/composition/login.ts` | nuevo: UNICO importador de adaptadores (R22); `parseLockPolicy` fail-fast exportada (default 5 y [1,5,15,60]); hasher en scope de modulo + calentado; `crearClientePrisma()` que LANZA con mensaje explicito (bloqueo Prisma adapter, ver punto 1); `obtenerContexto()` lazy; `verifyCredentials` compuesto | T13 |
+| `lib/actions/login.ts` | nuevo: `'use server'` (T15): attemptId = `crypto.randomUUID()` por invocacion, `parseLoginInput` + `resolveNextDestination` en el borde (R6), exito -> `redirect` FUERA de try/catch (Next 16: lanza para cortar el stream), fallo -> `loginFormRejected` sin motivo (R2) | T15 |
+| `tests/unit/password-hasher.test.ts` | nuevo: 6 casos (coste visible en el hash, fail-closed vacio/corrupto, promesa del señuelo con `toBe`, señuelo nunca autentica) | T8 |
+| `tests/unit/session-id-factory.test.ts` | nuevo: 3 casos (ids distintos, UUID v4, sin colisiones) | T9 |
+| `tests/unit/session-token.test.ts` | nuevo: 13 casos (formato, roundtrip con reloj EXPLICITO, exp-iat=8h, firma/payload alterados, v0/v2 sin verificar, expirado == exp / vigente 1s antes, secreto corto, role invalido, payload no-JSON con HMAC VALIDO forjado con `createHmac` del test, claims malformadas, dos tickets) | T10 |
+| `tests/unit/session-starter.test.ts` | nuevo: 5 casos (attrs por entorno y sin domain, token verificado con el mismo secreto en la salida, lanza sin secreto / corto, cero cookies) | T11 |
+| `tests/unit/architecture-login.test.ts` | nuevo: 5 greps estructurales con fs (R22 imports de adaptadores, R29 contencion del paquete bcryptjs, primitivas de firma solo en session-token + su harness, must_change_password ausente, R30 sin decodificacion de forma) | T13 |
+| `progress/impl_IA-1-login.md` | modificado: esta seccion | — |
+
+### Desviaciones y hallazgos de tanda (para el reviewer)
+
+1. **Prisma 7 NO admite `new PrismaClient()` sin opciones — bloqueo real documentado en
+   codigo.** `PrismaClientConstructorArgs` es union `{adapter} | {accelerateUrl}`, una de
+   las dos OBLIGATORIA (verificado en `lib/generated/prisma/internal/class.ts:85` y
+   `prismaNamespace.ts:1046`). `@prisma/adapter-pg` no esta aprobado en
+   `docs/dependencias.md` (el head del proyect decide). En vez de un cast que finja un
+   adapter, `crearClientePrisma()` lanza con un mensaje que nombra la solucion y T17; el
+   typecheck queda limpio y el fallo de runtime es actionable, no opaco. La firma del
+   constructor era la causa del error TS2554 inicial de esta tanda.
+2. **`crearToken` se declaro `async`.** Originalmente validaba (secret/role) y lanzaba
+   SINCRONO desde una funcion tipada `Promise<string>`: un llamador con `.reject` no
+   atraparia la validacion. Declarandola async, TODO fallo es rechazo (consistencia
+   fail-closed, design §6).
+3. **Tests de token con reloj EXPLICITO en `verificarToken`**: el AHORA fijo de emision
+   (2026-09-16T12:00Z) y el reloj real del runner ya no conviven (hoy es el mismo dia; el
+   token expiraba a las 20:00Z). Los unit tests pasan siempre el reloj a la verificacion —
+   nunca dependen de la pared.
+4. **Test estructural afinado a USO real, no a menciones**: R29 mira el import del paquete
+   `bcryptjs` (un grep literal de la palabra marca a la guardia de dependencias, que cita
+   `bcryptjs` como DATO de su fixture); «firma» matchea imports de `node:crypto` y
+   llamadas/accesos (`timingSafeEqual(`, `createHmac(`, `crypto.subtle.`), no
+   comentarios; el propio archivo de arquitectura se cita a si mismo al nombrar las
+   primitivas y se excluye por construccion (`SELF_REL`).
+5. **`attemptId` en el controller**: confirmado el mando de Tanda 3 (desviacion 4): el
+   servicio conoce la sesion (sid) via puerto, el id del FORMULARIO nace en el action por
+   invocacion (`crypto.randomUUID()`) — sin parametros ni derivaciones.
+6. **`process.env` no pasa directo a `parseLockPolicy`**: su tipo (`ProcessEnv`) no es
+   estructuralmente compatible con la interfaz del parser (TS2559) — se pasa campo a campo y
+   queda asi documentado en la composicion.
+7. Remanente del Bloque 0: `lint = tsc --noEmit` (provisional, sin eslint aprobado).
+
+### Mapa R<n> -> test (parcial de la tanda; tabla completa en T19)
+
+| R<n> | Test |
+| --- | --- |
+| R4/R5 | `password-hasher` (promesa del señuelo compartida con `toBe`; el señuelo jamás autentica) + `architecture-login` (calentado no verificado) |
+| R8 | `session-starter` (attrs httpOnly/lax//secure por entorno, sin domain) |
+| R9 | `session-token` (exp = iat + 8h va DENTRO del valor firmado; vencido al llegar a exp, vigente 1s antes) |
+| R10 | `session-token` (claims solo identificadores, roundtrip) + `session-starter` (el valor que viaja se verifica y lleva el sid) |
+| R11 | `session-token` (sin secreto/corto lanza emision y verificacion — fail-closed) + `session-starter` (startSession lanza, cero cookies) |
+| R14 | `session-id-factory` (UUID por llamada, no derivado) |
+| R22 | `architecture-login` (grep: solo composicion + paquete de servicios importa adaptadores) |
+| R26 | `session-token` (role fuera del conjunto cerrado -> ticket imposible) |
+| R27 | `architecture-login`+T12: lector sin desambiguacion (query real en T17) |
+| R29 | `architecture-login` (import de bcryptjs solo en password-hasher) + `password-hasher` (coste 10) |
+| R30 | `architecture-login` (sin startsWith/charAt/[N]/centinela en hasher y servicio) + `password-hasher` (fail-closed por try/catch, sin forma) |
+
+### Verificacion (salidas reales)
+
+- `pnpm typecheck` -> OK: `tsc --noEmit` sin errores (tras documentar el bloqueo de
+  Prisma en la composicion, punto 1).
+- `pnpm lint` -> OK (provisional: `tsc --noEmit`, mismo estatus que tandas previas).
+- `pnpm exec vitest related --run <5 tests nuevos + guardia>` ->
+  `Test Files 6 passed (6)` / `Tests 37 passed (37)` (6 + 3 + 13 + 5 + 5 + 5 de la
+  guardia). Suite completa y `./init.sh` NO se corrieron (regla del gate: leader).
+- Nada se instalo: `package.json` intacto (guardia de dependencias sigue verde).
+
+### Veredicto
+
+Bloque B + composicion + action completos y en verde para lo que la tanda puede verificar sin
+base: codec/cookie/hasher/factory con 27 tests nuevos, los 5 greps estructurales fijando
+R22/R29/R30 y la contencion de Prisma a la composicion; el unico punto ciego es el runtime de
+los repos, bloqueado por T0 item 2 -> T17 y dejado con error explicito en `crearClientePrisma`.
