@@ -127,7 +127,7 @@ Config E2E (baseURL local, chromium) y `e2e/` en el scope de `package.json`.
 Crea el esquema y el catalogo que el login consume (`design.md > Modelo de datos y migracion`).
 Depende de TS3. Orden: **TI1 → TI2**; TI3 es paralelo al Bloque A.
 
-### TI1 — Migracion `init_identity` (R25, R26-esquema, R27, R28, R30-esquema)
+### TI1 — Migracion `init_identity` (R25, R26-esquema, R27, R28, R30-esquema) — **[x]**
 
 `db/migrations/<timestamp>_init_identity/` con:
 
@@ -148,7 +148,7 @@ Depende de TS3. Orden: **TI1 → TI2**; TI3 es paralelo al Bloque A.
 `_prisma_migrations` consistente; `\d users` muestra el indice global (y no `username` UNIQUE
 plano).
 
-### TI2 — Migracion `seed_roles` — catalogo cerrado (R26)
+### TI2 — Migracion `seed_roles` — catalogo cerrado (R26) — **[x]**
 
 `db/migrations/<timestamp>_seed_roles/` (data migration, no `prisma db seed` — alternativa 8
 del design):
@@ -182,7 +182,7 @@ fixtures limpios al final.
 
 ---
 
-## T0 — Preflight (sustituye al GATE; decision 7)
+## T0 — Preflight (sustituye al GATE; decision 7) — **[x]**
 
 Confirma en orden:
 
@@ -408,7 +408,7 @@ archivos nuevos.
 
 ## Bloque C — Action, migracion y pantalla
 
-### T14 — Migracion `login_attempts` (R24)
+### T14 — Migracion `login_attempts` (R24) — **[x]**
 
 `db/migrations/<timestamp>_add_login_attempts/` con:
 

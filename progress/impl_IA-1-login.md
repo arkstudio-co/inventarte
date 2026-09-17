@@ -518,3 +518,89 @@ completos en disco — frontend_dev no toco nada), `/login` renderiza sin base (
 real), adapter PrismaPg cableado (Tanda 5 backend_dev) y tasks T16/T18 marcadas `[x]`; el
 unico punto ciego es el runtime contra base — T0 item 2/TI1-TI3/T17 bloqueados por falta de
 `.env`, gestionado por human+leader.
+
+---
+
+## Tanda 6 — Desbloqueo por entorno: migraciones aplicadas (T0, TI1, TI2, T14)
+
+Fecha: 2026-09-17. El humano escribio `.worktrees/IA-1-login/.env` (verificado por el
+leader: `DATABASE_URL`, `DIRECT_URL`, `SESSION_SECRET` >= 32, y git lo ignora). Con eso se
+**desbloquea** la aplicacion de TI1/TI2/T14 y los tests de integracion (TI3, T17) y el E2E
+real (T18). Esta tanda aplica y verifica las migraciones, y documenta un hallazgo de red
+que obligo a rutear `prisma migrate` por el **session pooler** en vez del host directo.
+
+### Hallazgo de red (determinante para el resto del cierre)
+
+`prisma migrate status` fallo primero con **P1001** (`Can't reach database server at
+db.rfiwqjcqzxfgkudofskd.supabase.co:5432`). Diagnostico con evidencia:
+
+- `db.rfiwqjcqzxfgkudofskd.supabase.co` resuelve **solo AAAA (IPv6)** — verificado con el
+  resolver local y con 8.8.8.8 (`nslookup`; no hay registro A).
+- Esta maquina **no tiene ruta IPv6**: `Test-NetConnection ipv6.google.com:443` ->
+  `False`, y node falla con `ENOTFOUND getaddrinfo` contra el host directo.
+- El pooler `aws-0-us-east-2.pooler.supabase.com` resuelve IPv4 (CNAME ->
+  `pool-tcp-us-east-2-...elb...` con A 13.59.95.192 / 3.13.175.194 / 3.139.14.59) y
+  **conecta en 5432 y 6543**. Con `pg` real: `SESSION_POOLER_5432: CONNECTED`,
+  `TRANSACTION_POOLER_6543: CONNECTED`, autenticacion con la misma contraseña.
+
+Causa raiz: Supabase ofrece el direct connection **IPv6-only** (sin IPv4 add-on) y el
+worktree no tiene IPv6. Workaround usado, **sin tocar `.env`** (solo override de
+`DIRECT_URL` en el comando — `process.loadEnvFile` no pisa variables ya definidas,
+verificado): `prisma migrate` corre contra el **session pooler** (5432, IPv4), que pinnea
+la conexion y soporta transacciones — el camino estandar cuando el direct connection es
+IPv6-only. `DATABASE_URL` (runtime/app) queda como escribio el humano (6543).
+
+> Nota para el leader/reviewer: el `DIRECT_URL` del `.env` solo es util en maquinas con
+> IPv6, o si Supabase pasa a dual-stack. En esta maquina, cualquier `migrate
+> deploy/dev/status` y `db:rollback` necesita el override del session pooler. Si se quiere
+> dejar fijo, la alternativa es cambiar `DIRECT_URL` en `.env` al session pooler 5432
+> (decision del humano; el script `prisma.config.ts` no hace distingos).
+
+### Archivos aplicados/verificados
+
+| Archivo | Accion | Tarea |
+| --- | --- | --- |
+| `db/migrations/20260916090000_init_identity/migration.sql` | aplicado | TI1 |
+| `db/migrations/20260916090001_seed_roles/migration.sql` | aplicado | TI2 |
+| `db/migrations/20260916090002_add_login_attempts/migration.sql` | aplicado | T14 |
+| `db/migrations/*/down.sql` (3) | **validados en dry-run no destructivo**: BEGIN -> 3 downs en orden -> ROLLBACK, base intacta | TI1/TI2/T14 |
+| `specs/IA-1-login/tasks.md` | T0, TI1, TI2, T14 marcadas `[x]` | T0/TI1/TI2/T14 |
+
+Nada se edito ni se instalo: las migraciones estaban escritas y commiteadas (Tanda 2) y
+solo se aplicaron. Sin `pnpm install`, `package.json` intacto.
+
+### Salidas reales
+
+- `pnpm exec prisma migrate status` (sin env de ruteo) -> **P1001** (halazgo de arriba).
+- `DIRECT_URL=<session pooler> pnpm exec prisma migrate deploy` -> `All migrations have
+  been successfully applied.` (3: init_identity, seed_roles, add_login_attempts).
+- `DIRECT_URL=<session pooler> pnpm exec prisma migrate status` -> `Database schema is up
+  to date!`
+- Verificacion con `pg` real (via `DATABASE_URL`, transaction pooler 6543):
+  - `roles count = 2 -> admin, admin_maestro` (seed TI2, R26).
+  - tablas en `public`: `_prisma_migrations, companies, login_attempts, roles, users`.
+  - `_prisma_migrations`: las 3 migraciones `done=true`.
+  - indice global presente: `users_username_unique_active` =
+    `CREATE UNIQUE INDEX ... ON public.users USING btree (lower((username)::text)) WHERE
+    (deleted_at IS NULL)` (R27).
+  - RLS: las 4 tablas con `relrowsecurity=true relforcerowsecurity=true` (TI1/T14).
+- Dry-run de los 3 `down.sql` (transaccion + ROLLBACK, contra session pooler): los tres
+  `OK`, `ROLLBACK: base intacta`.
+
+### T0 (preflight) — checklist cerrado
+
+1. Scaffolding TS1-TS6: `pnpm typecheck` OK, `pnpm lint` OK, `pnpm exec vitest run
+   tests/guards` -> 1 archivo / 5 tests OK. (El `./init.sh` completo lo corre el leader.)
+2. Entorno: `.env` presente con `DATABASE_URL`, `DIRECT_URL`, `SESSION_SECRET` (72 chars),
+   `LOGIN_MAX_FAILED_ATTEMPTS=5`, `LOGIN_LOCK_MINUTES="1,5,15,60"`; base alcanzable via
+   pooler (secuencia de arriba).
+3. Migraciones aplicadas: `SELECT count(*) FROM roles` = **2** (`admin`,
+   `admin_maestro`).
+
+### Veredicto
+
+T0/TI1/TI2/T14 cerradas: el esquema de identidad, el catalogo y el rastro de intentos
+estan aplicados y verificados contra la base real (2 roles, indice global, RLS en las 4
+tablas, `_prisma_migrations` consistente) y los 3 downs validados sin destruir nada; el
+unico matiz es el ruteo IPv6 del direct connection, documentado arriba con el workaround
+del session pooler. Pendiente de la tanda: TI3, T17, T18 real y T19.
