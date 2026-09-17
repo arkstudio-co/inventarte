@@ -180,3 +180,102 @@ TI1 + TI2 + T14 escritos y verificados al maximo posible sin base: esquema valid
 generado, estructura 1:1 con lo que Prisma 7 emitiria, RLS/CHECKs/indice global/seed presentes
 con su down.sql; la aplicacion queda bloqueada por T0 item 2 (config de entorno), que gestiona
 el human+leader.
+
+---
+
+## Tanda 3 - Bloque A: dominio puro (T2, T3, T4, T5, T6, T7)
+
+Rango: R1-R7, R12-R21, R24, R26, R27 (parcial; tabla completa en T19). Restricciones de la
+tanda cumplidas: dominio SIN `@prisma/client`, `next/*`, adaptadores ni lecturas de env
+(eso es Bloque B/T13); verificación acotada a typecheck + lint + vitest related.
+
+### Archivos creados/modificados
+
+| Archivo | Cambio | Tarea |
+| --- | --- | --- |
+| `lib/types/identity-constants.ts` | nuevo: `USERNAME_MAX_LENGTH = 255` (provisional, casa con `varchar(255)` de TI1), `CREDENTIAL_MAX_LENGTH = 64` (margen bajo los 72 bytes de bcrypt) | T2 |
+| `lib/types/login-copy.ts` | nuevo: `LOGIN_COPY_CREDENTIALS_INVALID`, `LOGIN_COPY_FIELD_REQUIRED`, `loginCopyPasswordTooLong(max)`, `loginCopyFieldTooLong(max, campo='Este campo')` | T2 |
+| `lib/types/login.ts` | nuevo: `loginInputSchema` (zod v4: username trim 1..255, password sin trim 1..64), `LoginInput`, `LoginFieldErrors`, `LoginFormState` (union `idle \| invalid \| error`, attemptId SOLO en fallo, SIN contrasena — inv. 15), `LOGIN_INITIAL_STATE`, `normalizeUsername` (R3), `loginFormInvalid/Error/Rejected`, `parseLoginInput`, `resolveNextDestination` (sin open redirect), `DASHBOARD_ROUTE` | T2 |
+| `lib/interfaces/repositories/i-user-credentials-reader.ts` | nuevo: `AccountStatusRaw`, `RoleName`, `AuthenticatableUser` (crudo, sin cocinar "activa"; filtro no-borrado del puerto), `IUserCredentialsReader.findActiveByUsername` (sin desambiguacion: unicidad global R27) | T3 |
+| `lib/interfaces/repositories/i-login-attempt-recorder.ts` | nuevo: `LoginAttemptOutcome` (CHECK real), `LoginAttemptRecord` (sin password/hash/sesion, ip/userAgent opcionales), `CasSiguiente` estructurado, `ILoginAttemptRecorder.compareAndSet/set/recordAttempt` | T3 |
+| `lib/interfaces/services/i-password-hasher.ts` | nuevo: `verify` fail-closed (decision 4), `getDecoyHash()` (una vez por proceso, promesa cacheada; añadido por R4/R5) | T3 |
+| `lib/interfaces/services/i-session-starter.ts` | nuevo: `SessionTicket` (sub/roleName/companyId/sid), `startSession` puede lanzar y se PROPAGA (inv. 9) | T3 |
+| `lib/interfaces/services/i-session-id-factory.ts` | nuevo: `newSessionId(): string` (inv. 4, 11 — el id viene SIEMPRE de este puerto) | T3 |
+| `lib/services/login/account-status.ts` | nuevo: `effectiveAccountStatus` — unica funcion, orden de ramas fijado (inv. 13): raw fuera de {active,blocked} -> account_not_active; companyDeleted -> org_inactive; lockedUntil > now -> account_blocked; resto -> active (incluye bloqueo vencido R19) | T4 |
+| `lib/services/login/account-lock-policy.ts` | nuevo: `LockPolicy { maxFailedAttempts: 5, lockDurationsMinutes: [1,5,15,60] }`, `nextFailureState` (R18 intacto si bloqueo vigente; quinto fallo bloquea + reinicia contador y sube nivel CAPS en longitud — nunca permanente; fallos previos solo contador + limpiar plazo) y `successResetState` (R20) | T4 |
+| `lib/services/login/verify-credentials-service.ts` | nuevo: `verifyCredentials(input, ctx)` + `REJECTED` (congelado, inv. 1) + `MAX_CAS_RETRIES = 10`; flujo: normaliza -> lee -> inexistente (señuelo + 1 verify + rastro null) -> 1 verify (inv. 2, tambien en bloqueada R17) -> cortes de estado/org despues del hash sin escrituras (R21) -> exito (`set` reset, startSession propagando, rastro success) -> fallo (CAS con reloj fresco por iteracion, releer sin rehash inv. 8, desaparecido sin escribir R7, tope -> `annotation_failed: true`) | T4 |
+| `tests/unit/verify-credentials.test.ts` | nuevo: 13 casos con puertos falsos compartiendo store; reloj mutable; CAS programable (resultado + mutacion); contadores de verify/señuelo/sid | T5 |
+| `tests/unit/account-lock-policy.test.ts` | nuevo: reloj fake sin sleeps; 5 bloques encadenados con escalada 1/5/15/60/60; R19 cruzado con `effectiveAccountStatus` | T6 |
+| `tests/unit/login-border.test.ts` | nuevo: borde zod por campo, constante R2, normalizacion R3, estado sin contrasena (valor + negativo de compilacion con `@ts-expect-error`), attemptId/username conservados, aterrizaje `next` | T7 |
+| `progress/impl_IA-1-login.md` | modificado: esta seccion | — |
+
+### Desviaciones documentadas (Tanda 3)
+
+1. **Set de outcomes del rastro**: la consigna de tanda citaba `invalid_credentials` y
+   `annotation_failed` como miembros del CHECK; el CHECK REAL commiteado en Tanda 2 (design
+   §9, decision 3) es `success | bad_credentials | unknown_user | account_blocked |
+   account_not_active | org_inactive`, y `annotation_failed` es la columna booleana que se
+   pone a true solo si el CAS se agota. Manda design.md §9 + el migration; el codigo de T4
+   usa ese set.
+2. **`IPasswordHasher.getDecoyHash()`**: la tabla de puertos del design §4 tenia solo
+   hash/verify; R4/R5 (§8) exigen un hash señuelo con el mismo mecanismo y coste creado una
+   vez por proceso — se añade al puerto 2 con la misma justificacion con que `recordAttempt`
+   se añadio por R24.
+3. **`CasSiguiente` estructurado**: la firma plana `siguiente: { failedLoginAttempts,
+   lockedUntil }` del §7 no transporta `lockLevel` de la escalada; el objeto lleva los tres
+   campos y SIEMPRE se escriben (`lockedUntil: null` = limpiar columna), mientras que en
+   `estadoNuevo` null = no tocar esa columna (inv. 12).
+4. **`attemptId` no nace en el servicio**: el §5 paso 1 lo hacia sonar parte del caso de
+   uso, pero el §11 (union del formulario) lo pone solo en los estados de FALLO, y el
+   servicio no conoce formulario: lo genera el controller/Server Action (T15) y lo recibe
+   `loginFormInvalid/Error/Rejected` para armar el estado.
+5. **`ipAddress`/`userAgent` reservados**: R24 pide "desde donde" pero el contexto de esta
+   tanda no los provee; son opcionales en `LoginAttemptRecord` y el servicio los omite
+   (null en base cuando el adaptador exista).
+6. **Bug real corregido en T5** (lo cazo el typecheck): el servicio llamaba
+   `ctx.sessionIdFactory()` como si el puerto fuera una funcion; la interfaz T3 es objeto
+   con metodo `newSessionId()`. Corregido a `ctx.sessionIdFactory.newSessionId()`.
+
+### Mapa R<n> -> test (parcial de la tanda; tabla completa en T19)
+
+| R<n> | Test |
+| --- | --- |
+| R1 | T5 `acepta credenciales validas...` (activo + correcta) y camino inexistente -> rechazo |
+| R2 | T5 `todo rechazo devuelve el MISMO objeto congelado` (=== REJECTED en los 3 caminos) + T7 `todo rechazo de credenciales usa la misma constante exportada` |
+| R3 | T5 (`lecturas` recibe 'ana' al entrar '  Ana  ') + T7 `trim + minusculas del username; la contrasena nunca se normaliza` |
+| R4 | T5 `el senuelo se calcula una sola vez por proceso y se verifica una vez por intento` |
+| R5 | T5 (idem: 1 computacion por proceso, 2 verificaciones en 2 intentos) |
+| R6 | T5 `la entrada invalida se corta en el borde: ningun puerto llega a ser llamado` + T7 (vacios/largos por campo; corte en el borde) |
+| R7 | T5 `si el usuario desaparece entre intento y reintento, el reintento no escribe nada` + inexistente sin escrituras de cuenta (rastro null) |
+| R10 | T5 `acepta credenciales validas...` (ticket con sub/roleName/companyId del puerto, sid del puerto fabrica; entrada jamas) |
+| R12 | T5: ningun camino de fallo emite sesion (cortes + contrasena mala + agotado + desaparecido) |
+| R13 | T5 `cada desenlace deja su rastro... sin secretos` (por valor) + T7 estado sin contrasena (valor y negativo de compilacion) |
+| R14 | T5 (sid nuevo por emision, `sid-0` no derivado) + T7 `attemptId distinto por invocacion y username conservado` |
+| R15 | T6 `el quinto fallo consecutivo bloquea y reinicia el contador` |
+| R16 | T6 `la duracion del bloqueo escala 1/5/15/60 minutos y se repite 60, nunca permanente` |
+| R17 | T5 `la cuenta bloqueada verifica el hash UNA sola vez, aun con contrasena correcta` (y tambien con incorrecta) |
+| R18 | T6 `el fallo estando bloqueada devuelve el estado intacto` |
+| R19 | T6 `el bloqueo caducado deja de bloquear...` + `effectiveAccountStatus(...) === 'active'` |
+| R20 | T6 `successResetState` deja los tres a cero y estado active |
+| R21 | T5 `los cortes de estado, organizacion y bloqueo rechazan sin escribir ni emitir sesion` + T7 (corte en el borde) |
+| R24 | T5 `cada desenlace deja su rastro con username, outcome y vinculos` + `agotado el CAS registra annotation_failed` (recordAttempt en CADA desenlace resuelto) |
+| R26 | T5 (roleName del ticket sale del conjunto cerrado del puerto) — completo en T9/T11 |
+| R27 | parcial: lector busca por username normalizado, fila unica sin desambiguacion — el query real es T12 |
+
+### Verificacion (salidas reales)
+
+- `pnpm typecheck` -> OK: `tsc --noEmit` sin errores (tras corregir el bug de la nota 6 y un
+  import faltante en el test).
+- `pnpm lint` -> OK (provisional: `tsc --noEmit`, mismo estatus que Tandas 1-2).
+- `pnpm exec vitest related --run tests/unit/verify-credentials.test.ts
+  tests/unit/account-lock-policy.test.ts tests/unit/login-border.test.ts` ->
+  `Test Files 3 passed (3)` / `Tests 29 passed (29)` (13 + 5 + 11). Suite completa y
+  `./init.sh` NO se corrieron (regla del gate: los corre el leader).
+- Nada se instalo: `package.json` intacto (guardia de dependencias sigue verde).
+
+### Veredicto
+
+Bloque A completo y verde: dominio puro del login (tipos, 5 puertos, escalada de bloqueo y
+caso de uso con CAS) con 29 tests de unit que fijan R1-R7, R12-R21 y R24; las desviaciones
+frente al design/consigna quedaron documentadas arriba y el unico bug real (sesionIdFactory
+como funcion) lo detecto el propio typecheck y se corrigio en el fichero.
