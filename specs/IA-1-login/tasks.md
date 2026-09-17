@@ -34,7 +34,7 @@ El stack del repo **no esta montado** en esta rama (T0 dejaba de correr antes de
 bloque lo construye como base de todo lo demas. Salvo TS1 (declara, no instala), las tareas del
 bloque dependen de T1.
 
-### TS1 — `package.json`, tsconfig strict y layout base
+### TS1 — `package.json`, tsconfig strict y layout base — **[x]**
 
 Crea/escribe en la raiz del worktree:
 
@@ -47,7 +47,7 @@ Crea/escribe en la raiz del worktree:
 **Hecho:** los scripts estan declarados y `pnpm typecheck`/`pnpm lint` pasan tras T1; el schema
 apunta a `db/schema.prisma`.
 
-### T1 — Instalar dependencias aprobadas
+### T1 — Instalar dependencias aprobadas — **[x]**
 
 Instala (y solo estas) las dependencias aprobadas en F1.4; verificar que cada fila de
 `docs/dependencias.md` dice `aprobada` con fecha. **Dos listas:**
@@ -71,7 +71,7 @@ Correcciones de la verificacion de los 4 checks con red (2026-09-16):
 `pnpm typecheck` y `pnpm lint` pasan; una linea en `progress/impl_IA-1-login.md` con el
 resultado. Si alguna fila no esta aprobada: **PARA y reporta**.
 
-### TS2 — [P] Next.js App Router + Tailwind v4 (depende de T1 y TS1)
+### TS2 — [P] Next.js App Router + Tailwind v4 (depende de T1 y TS1) — **[x]**
 
 - Layout de la app segun `architecture.md` (`app/(public)/` y `app/(private)/` si el repo lo
   define asi) y `app/(public)/layout.tsx` minimo para que `/login` tenga donde vivir.
@@ -80,7 +80,11 @@ resultado. Si alguna fila no esta aprobada: **PARA y reporta**.
 **Hecho:** la app arranca (`pnpm dev` levanta y responde); Tailwind compila (un estilado de
 humo visible en cualquier componente).
 
-### TS3 — [P] Prisma cableado (depende de T1 y TS1)
+### TS3 — [P] Prisma cableado (depende de T1 y TS1) — **[x]**
+
+> Nota: `prisma validate` y `prisma generate` pasan sin base; el smoke de `db:migrate:create`
+> (dry-run) **queda diferido**: requiere conexion a base y `migrate dev`, bloqueados por falta
+> de `.env` (bitacora Tanda 1). El mismo flujo se ejercita de verdad en TI1/T14.
 
 `prisma generate` + cliente disponible; `db:migrate:create <nombre>` genera
 `db/migrations/<timestamp>_<nombre>/` con `migration.sql` + `down.sql` (convencion
@@ -89,7 +93,7 @@ humo visible en cualquier componente).
 **Hecho:** `pnpm exec prisma validate` pasa; `db:migrate:create smoke` produce las dos carpetas
 esperadas en un dry-run y se descarta.
 
-### TS4 — [P] vitest + guardia de dependencias (depende de T1 y TS1)
+### TS4 — [P] vitest + guardia de dependencias (depende de T1 y TS1) — **[x]**
 
 - Config de vitest (include de `tests/`).
 - `tests/guards/guard-dependencias-aprobadas.test.ts`: recorre `docs/dependencias.md` y falla
@@ -99,13 +103,13 @@ esperadas en un dry-run y se descarta.
 **Hecho:** `pnpm exec vitest run tests/guards` verde (la guardia pasa contra
 `docs/dependencias.md` ya completado por el leader en F1.4).
 
-### TS5 — [P] Playwright (depende de T1 y TS1)
+### TS5 — [P] Playwright (depende de T1 y TS1) — **[x]**
 
 Config E2E (baseURL local, chromium) y `e2e/` en el scope de `package.json`.
 
 **Hecho:** `pnpm exec playwright install chromium` ejecutado; un smoke test corre y pasa.
 
-### TS6 — [P] `.env.example` + `.gitignore` (depende de T1)
+### TS6 — [P] `.env.example` + `.gitignore` (depende de T1) — **[x]**
 
 - `.env.example` con `DATABASE_URL`, `DIRECT_URL`, `SESSION_SECRET` (>= 32),
   `LOGIN_MAX_FAILED_ATTEMPTS` (default 5) y `LOGIN_LOCK_MINUTES` (default "1,5,15,60") —
