@@ -17,3 +17,17 @@ node_modules/
 # ruido del SO y logs
 .DS_Store
 *.log
+
+# artefactos de build y generados (TS6: .next/, coverage/, playwright-report/, test-results/)
+.next/
+coverage/
+playwright-report/
+test-results/
+lib/generated/
+*.tsbuildinfo
+
+# declaracion TypeScript regenerada por `next dev`/`next build` (docs de Next 16: no versionar)
+next-env.d.ts
+
+# reporte transitorio del gate (test:json -> scripts/comparar-baseline-rojos.mjs)
+.vitest-rojos.json

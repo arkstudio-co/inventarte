@@ -1,0 +1,79 @@
+// db/schema.prisma — esquema de Prisma del proyecto (v7).
+//
+// Prisma 7: el datasource NO lleva `url`/`directUrl` (era la config de Prisma 5/6); la URL
+// del CLI (Migrate = DIRECT_URL) vive en prisma.config.ts del repo raiz. DATABASE_URL
+// (pooler) la lee la app en runtime via el adaptador de `pg` (dependencia aprobada).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Modelos de identidad (TI1) + LoginAttempt (T14) — design.md §10, verbatim.
+// RLS de las cuatro tablas, el indice GLOBAL de unicidad y los CHECK de estados se escriben
+// A MANO en las migraciones: Prisma no modela ni CHECKs ni el indice parcial
+// `lower(username) WHERE deleted_at IS NULL` (R27 — el schema NO declara @unique sobre
+// username a proposito: bloquearia el reuso post-borrado). roles.name SI lleva @unique
+// (catalogo cerrado, R26).
+
+model Company {
+  id        String   @id @default(uuid()) @map("id") @db.Uuid
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  users    User[]
+  attempts LoginAttempt[]
+  @@map("companies")
+}
+
+model Role {
+  id    String @id @default(uuid()) @map("id") @db.Uuid
+  name  String @unique @map("name") @db.VarChar(32)
+
+  users User[]
+  @@map("roles")
+}
+
+model User {
+  id                  String    @id @default(uuid()) @map("id") @db.Uuid
+  companyId           String    @map("company_id") @db.Uuid
+  roleId              String    @map("role_id") @db.Uuid
+  username            String    @map("username") @db.VarChar(255)
+  passwordHash        String    @map("password_hash") @db.Text
+  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
+  lockLevel           Int       @default(0) @map("lock_level")
+  lockedUntil         DateTime? @map("locked_until") @db.Timestamptz(6)
+  accountStatus       String    @default("pending") @map("account_status") @db.VarChar(16)
+  deletedAt           DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  company  Company       @relation(fields: [companyId], references: [id])
+  role     Role          @relation(fields: [roleId], references: [id])
+  attempts LoginAttempt[]
+
+  @@index([companyId])
+  @@index([roleId])
+  @@map("users")
+}
+
+model LoginAttempt {
+  id               String   @id @default(uuid()) @map("id") @db.Uuid
+  companyId        String?  @map("company_id") @db.Uuid
+  userId           String?  @map("user_id") @db.Uuid
+  username         String   @map("username") @db.VarChar(255)
+  outcome          String   @map("outcome") @db.VarChar(24)
+  annotationFailed Boolean  @default(false) @map("annotation_failed")
+  attemptedAt      DateTime @default(now()) @map("attempted_at") @db.Timestamptz(6)
+  ipAddress        String?  @map("ip_address") @db.Inet
+  userAgent        String?  @map("user_agent") @db.VarChar(512)
+
+  company Company? @relation(fields: [companyId], references: [id])
+  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, attemptedAt(sort: Desc)])
+  @@index([companyId, attemptedAt(sort: Desc)])
+  @@index([username, attemptedAt(sort: Desc)])
+  @@map("login_attempts")
+}
