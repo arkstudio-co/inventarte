@@ -7,28 +7,11 @@
 
 | id | feature | zone | status | branch | quien la tiene |
 |---|---|---|---|---|---|
-| IA-1 | login | backend | in_progress | feature/IA-1-login | **PR #1 abierto** hacia `dev`; review OK sin bloqueantes; espera merge del humano (F2.5) |
+| _(ninguna)_ | | | | | |
 
-Port `imports/login/` + identidad minima + stack base, todo dentro de IA-1. Board IA-1 en
-**En curso**; ramas `dev` y `feature/IA-1-login` pusheadas a `origin` (ultimo commit de la rama:
-`355ecb6`). **PR:** https://github.com/arkstudio-co/inventarte/pull/1
-
-Gate de cierre (F2.4): `./init.sh` **completo en verde** — typecheck strict, lint, suite completa
-sin rojos nuevos, todas las migraciones con `down.sql`, `.env` cargado. Integracion real:
-TI3 7/7 + T17 11/11; E2E con navegador 3/3. Trazabilidad R1-R30 verificada por el reviewer.
-
-**Avance de `tasks.md` (2026-09-16)**
-
-| Hecho `[x]` | Pendiente `[ ]` |
-| --- | --- |
-| Bloque 0 (TS1-TS6, T1): stack base, Prisma 7, vitest + guardia, Playwright, `.env.example` | **T0** preflight: `.env` (lo escribe el humano) |
-| Bloque A (T2-T7): dominio puro, 5 puertos, politica de bloqueo, unit tests | **TI1/TI2/T14**: migraciones **escritas** — falta **aplicarlas** (`prisma migrate deploy`) |
-| Bloque B (T8-T13, T15): hasher, token HMAC, cookie, repos, composicion unica, Server Action | **TI3**: integration de identidad (necesita base) |
-| T16 (pantalla de login) y T18 (E2E escritos; corrida real con `LOGIN_E2E=1`) | **T17**: integration contra base real |
-| Adapter `@prisma/adapter-pg` cableado (`PrismaPg` en `crearClientePrisma()`) | **T19**: mapa `R<n> -> test` completo y cierre del checklist |
-
-Gate del leader al cerrar la tanda: `./init.sh --rapido` **verde** (typecheck, lint, 66 tests +
-5 guardias, todas las migraciones con `down.sql`); unico aviso: no hay `.env`.
+**IA-1 (login) cerrada el 2026-09-17**: PR #1 mergeado en `dev` (`63b3a9a`), ficha en `done`, tarjeta
+en *Finalizado*, worktree desmontado. Resumen completo en `progress/history.md`. El spec vive en
+`specs/IA-1-login/` (ya en `dev`).
 
 ## Evaluaciones
 
@@ -70,25 +53,29 @@ _(ninguno)_
 
 ## Deudas y cosas abiertas
 
-1. **`.env` pendiente — el humano lo escribe (unico bloqueo).** La base es **Supabase cloud**.
-   El humano crea `.worktrees/IA-1-login/.env` a partir de `.env.example` con:
-   `DATABASE_URL` (pooler, puerto 6543), `DIRECT_URL` (directo, 5432) y `SESSION_SECRET`
-   (>= 32 caracteres). El implementer **no** lo crea, no migra contra placeholders y no inventa
-   credenciales. Bloquea **TI1/TI2/T14** (aplicar migraciones), **TI3** y **T17**. Ya no bloquea
-   nada mas: el driver adapter `@prisma/adapter-pg` 7.10.0 esta **aprobado y cableado**
-   (`PrismaPg` + `pg`, `scripts/pg.d.ts` borrado con `@types/pg` 8.23.1 aprobado).
-   Al escribirlo: aplicar migraciones, correr TI3/T17 y pasar a F2.2 (reviewer).
-2. **E2E real diferido**: `e2e/login.spec.ts` esta escrito y revisado, pero la corrida con
-   navegador real se levanta con `LOGIN_E2E=1` cuando exista base.
-3. **`docs/jira.md` dice proyecto `QC`, feature_list.json dice `IA`.** El JSON manda y la ficha
-   IA-1 vive en el proyecto IA (Invent_Arte). Verificar que el cambio QC -> IA fue deliberado.
-4. **Warnings LF/CRLF** en los commits (sin `.gitattributes`). Cosmetico; si molesta, anadir
-   normalizacion de fin de linea en una tarea de infra.
-5. **TypeScript 7.0.2 / Next 16.3.5 son filo.** Si typecheck/build/tests rompen por
-   incompatibilidad, el implementer aplica el fallback aprobado (fijar la anterior estable del
-   paquete y reportar al leader).
-6. **`lint` es `tsc --noEmit` provisional**: `eslint` no esta en el registro de dependencias
+_(Las deudas 1, 2 y 7 de la sesion de IA-1 quedaron resueltas al cerrar la feature: `.env` escrito por
+el humano, E2E real corrido 3/3 y remoto pusheado.)_
+
+1. **`docs/jira.md` dice proyecto `QC`, `feature_list.json` dice `IA`.** El JSON manda y la ficha
+   IA-1 vive en el proyecto IA (Invent_Arte). Verificar que el cambio QC -> IA fue deliberado y, si lo
+   fue, corregir el doc.
+2. **`lint` es `tsc --noEmit` provisional**: `eslint` no esta en el registro de dependencias
    aprobadas y el implementer no lo instalo «por si acaso». Cuando una feature lo apruebe, se
    sustituye el script.
-7. **Remoto resuelto**: `origin` = `https://github.com/arkstudio-co/inventarte.git` (estaba
-   vacio al conectar). Pusheados `dev` (`f81e383`) y `feature/IA-1-login` (`7da9aa5`).
+3. **Menores del review de IA-1 sin cerrar**: M2 (blind spots del grep de R22: `scripts/` y `e2e/`
+   fuera del scan; `lib/services/login/*` aparece en ambas listas), M5 (el `lint` provisional de
+   arriba), O1 (`unknown_user` esta en el CHECK de T14 pero el codigo nunca lo emite) y O2 (aislamiento
+   por empresa). Los menores M1/M3/M4 si se cerraron antes del PR.
+4. **Unicidad global vs `architecture.md`**: la ronda 2 decidio unicidad **global** del identificador,
+   que revierte para el login la lectura per-empresa de QC-46/47. Confirmar que
+   `docs/architecture.md` refleja la decision (hoy puede seguir describiendo el criterio anterior).
+5. **Warnings LF/CRLF** en los commits (sin `.gitattributes`). Cosmetico; si molesta, anadir
+   normalizacion de fin de linea en una tarea de infra.
+6. **TypeScript 7.0.2 / Next 16.3.5 son filo.** Si typecheck/build/tests rompen por
+   incompatibilidad, el implementer aplica el fallback aprobado (fijar la anterior estable del
+   paquete y reportar al leader).
+7. **Rama remota `origin/feature/IA-1-login` sigue en GitHub** (local ya borrada tras el merge). El
+   arnes no borra ramas remotas: la quita el humano cuando quiera.
+8. **`wt.sh done` no borra la carpeta del worktree en Windows** cuando `node_modules` pasa de
+   `MAX_PATH` (fallo con `node_modules/.pnpm/next@...`); deja ~500 MB. Se completo a mano con
+   `rd /s /q \\?\<ruta>`. Candidato a `/afinar-regla` (o a un `--assume-merged` + limpieza larga).
