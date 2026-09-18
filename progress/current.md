@@ -7,11 +7,15 @@
 
 | id | feature | zone | status | branch | quien la tiene |
 |---|---|---|---|---|---|
-| IA-1 | login | backend | in_progress | feature/IA-1-login | implementacion casi cerrada; **bloqueada en `.env`** (T0) para TI1/TI3/T17 |
+| IA-1 | login | backend | in_progress | feature/IA-1-login | **PR #1 abierto** hacia `dev`; review OK sin bloqueantes; espera merge del humano (F2.5) |
 
 Port `imports/login/` + identidad minima + stack base, todo dentro de IA-1. Board IA-1 en
 **En curso**; ramas `dev` y `feature/IA-1-login` pusheadas a `origin` (ultimo commit de la rama:
-`7da9aa5`).
+`355ecb6`). **PR:** https://github.com/arkstudio-co/inventarte/pull/1
+
+Gate de cierre (F2.4): `./init.sh` **completo en verde** — typecheck strict, lint, suite completa
+sin rojos nuevos, todas las migraciones con `down.sql`, `.env` cargado. Integracion real:
+TI3 7/7 + T17 11/11; E2E con navegador 3/3. Trazabilidad R1-R30 verificada por el reviewer.
 
 **Avance de `tasks.md` (2026-09-16)**
 
