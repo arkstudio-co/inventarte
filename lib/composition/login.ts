@@ -110,6 +110,9 @@ function crearClientePrisma(): PrismaClient {
 function obtenerContexto(): VerifyCredentialsContext {
   if (contexto === null) {
     const db = crearClientePrisma();
+    // Invariante 3: UNA sola funcion de reloj por invocacion — la misma alimenta
+    // politica/CAS (ctx.clock) y el token de sesion (reloj del starter).
+    const reloj = (): Date => new Date();
     contexto = {
       reader: new UserCredentialsRepo(db),
       hasher,
@@ -117,6 +120,7 @@ function obtenerContexto(): VerifyCredentialsContext {
       sessionStarter: crearSessionStarter({
         produccion: process.env.NODE_ENV === "production",
         leerSecret: () => process.env.SESSION_SECRET, // leido EN LA LLAMADA (design §6)
+        reloj,
         escribirCookie: async (atributos: CookieAtributos) => {
           // R8: httpOnly + sameSite lax + path / + secure solo produccion, sin domain.
           const store = await cookies();
@@ -129,7 +133,7 @@ function obtenerContexto(): VerifyCredentialsContext {
         },
       }),
       sessionIdFactory: crearSessionIdFactory(),
-      clock: () => new Date(),
+      clock: reloj,
       lockPolicy,
     };
   }

@@ -25,7 +25,7 @@ export interface SessionStarterEnv {
   produccion: boolean; // secure solo en produccion (R8)
   leerSecret: () => string | undefined; // SESSION_SECRET, leido EN LA LLAMADA (design §6)
   escribirCookie: (atributos: CookieAtributos) => Promise<void>;
-  reloj?: () => Date; // invariante 3: reloj inyectable, nunca Date.now() en el puerto
+  reloj: () => Date; // invariante 3: SIEMPRE inyectado por la composicion, nunca new Date() en el puerto
 }
 
 // Parte pura: los atributos que el navegador debe recibir. Separada del escritor para que
@@ -57,6 +57,7 @@ export function crearSessionStarter(env: SessionStarterEnv): ISessionStarter {
 
       // Invariante 10 en adelante: el ticket del dominio (sub/roleName/companyId/sid) se
       // convierte al payload del token; las claims viajan firmadas con exp = iat + 8 h (R9).
+      // Invariante 3: reloj SIEMPRE inyectado por la composicion; sin fallback.
       const token = await crearToken(
         {
           sub: ticket.sub,
@@ -65,7 +66,7 @@ export function crearSessionStarter(env: SessionStarterEnv): ISessionStarter {
           sid: ticket.sid,
         },
         secreto,
-        env.reloj ? env.reloj() : new Date(),
+        env.reloj(),
       );
 
       await env.escribirCookie(cookieDeSesion(token, env.produccion));
